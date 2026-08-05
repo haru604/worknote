@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+  <meta name="theme-color" content="#08192d">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="WORKNOTE">
+  <meta name="mobile-web-app-capable" content="yes">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" sizes="192x192" href="./icons/icon-192.png">
+  <link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+  <link rel="stylesheet" href="./styles.css?v=5.0.0">
+  <title>WORKNOTE</title>
+</head>
+<body>
+  <div id="splash" class="splash">
+    <img src="./icons/icon-192.png" alt="WORKNOTE">
+    <h1>WORKNOTE</h1><p>今日の仕事を、ひとつずつ。</p>
+  </div>
+
+  <div id="app" class="app hidden">
+    <header class="topbar">
+      <div><div id="headerDate" class="date-label"></div><h1 id="pageTitle">WORKNOTE</h1></div>
+      <div class="top-actions">
+        <button id="installBtn" class="install-btn" type="button">インストール</button>
+        <button id="searchBtn" class="icon-btn" aria-label="検索">⌕</button>
+      </div>
+    </header>
+
+    <div id="installPanel" class="install-panel hidden"><div><strong>WORKNOTEをアプリとして使う</strong><span>フルスクリーンでホーム画面にインストール</span></div><button id="installPanelBtn" type="button">インストール</button></div>
+    <main id="view-home" class="view active"></main>
+    <main id="view-notes" class="view"></main>
+    <main id="view-calendar" class="view"></main>
+    <main id="view-history" class="view"></main>
+    <main id="view-settings" class="view"></main>
+
+    <button id="quickAdd" class="fab" aria-label="すぐメモ">＋</button>
+    <nav class="bottom-nav">
+      <button data-view="home" class="active"><span>⌂</span>ホーム</button>
+      <button data-view="notes"><span>▤</span>メモ</button>
+      <button data-view="calendar"><span>▦</span>予定</button>
+      <button data-view="history"><span>◷</span>履歴</button>
+      <button data-view="settings"><span>⚙</span>設定</button>
+    </nav>
+  </div>
+
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-sheet"><div class="modal-handle"></div><div id="modalContent"></div></div>
+  </div>
+  <div id="toast" class="toast hidden"></div>
+  <input id="fileInput" type="file" hidden>
+  <script src="./app.js?v=5.0.0" defer></script>
+</body>
+</html>
