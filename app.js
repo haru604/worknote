@@ -141,7 +141,7 @@ async function requestInstall(){
  installClickPending=true;
  setInstallUI();
  try{
-  const registration=await navigator.serviceWorker?.getRegistration('./');
+  const registration=await navigator.serviceWorker?.getRegistration('/worknote/');
   await registration?.update();
  }catch(error){console.warn('Install preparation update failed:',error)}
  clearTimeout(installWaitTimer);
@@ -190,7 +190,7 @@ window.addEventListener('load',()=>{
  setTimeout(startApp,250);
  setInstallUI();
  if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'})
+  navigator.serviceWorker.register('/worknote/sw.js', {scope:'/worknote/'})
    .then(async registration=>{
     try{await registration.update()}catch(error){console.warn('Service Worker update failed:',error)}
     setInstallUI();
