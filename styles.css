@@ -14,3 +14,12 @@
 .note-editor-options{flex:none}
 .note-editor-modal .danger-note{margin-bottom:2px}
 @media(max-height:650px){.note-editor-options{margin-top:5px;margin-bottom:5px}.note-editor-body textarea{min-height:30dvh}}
+
+/* v10 日報・予定/タスク追加 */
+.note-editor-dynamic{display:flex;flex-direction:column;min-height:0;flex:1;overflow:auto;padding-bottom:12px}
+.report-grid{display:grid;gap:12px;padding:0 16px 16px}
+.report-field textarea{min-height:110px;resize:vertical}
+.report-field input{margin-bottom:8px}
+.check-row{display:flex!important;align-items:center;gap:8px;margin-top:6px;font-weight:600}
+.check-row input{width:20px;height:20px;margin:0}
+@media (min-width:760px){.report-grid{grid-template-columns:1fr 1fr}.report-field{min-width:0}}
