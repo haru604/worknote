@@ -1,10 +1,10 @@
-const CACHE = "worknote-v8.0.0";
+const CACHE = "worknote-v9.0.0";
 const BASE = "/worknote/";
 const APP_SHELL = [
   BASE,
   BASE + "index.html",
-  BASE + "styles.css?v=8.0.0",
-  BASE + "app.js?v=8.0.0",
+  BASE + "styles.css?v=9.0.0",
+  BASE + "app.js?v=9.0.0",
   BASE + "manifest.json",
   BASE + "icon-192.png",
   BASE + "icon-512.png",
@@ -65,4 +65,20 @@ self.addEventListener("fetch", event => {
 
 self.addEventListener("message", event => {
   if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
+});
+
+self.addEventListener("notificationclick", event => {
+  event.notification.close();
+  const target = event.notification.data?.url || BASE;
+  event.waitUntil((async () => {
+    const windows = await clients.matchAll({type:"window", includeUncontrolled:true});
+    for (const client of windows) {
+      if ("focus" in client) {
+        await client.focus();
+        if ("navigate" in client) await client.navigate(target);
+        return;
+      }
+    }
+    if (clients.openWindow) await clients.openWindow(target);
+  })());
 });
