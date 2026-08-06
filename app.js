@@ -93,8 +93,7 @@ function openModal(html){$('#modalContent').innerHTML=html;$('#modal').classList
 function closeModal(){$('#modal').classList.add('hidden');$('#modalContent').innerHTML=''}
 function globalSearch(){openModal(`<h2>検索</h2><div class="field"><input id="globalQ" placeholder="メモ・タスク・予定を検索"></div><div id="searchResults"></div>`);$('#globalQ').oninput=e=>{const q=e.target.value.trim().toLowerCase();if(!q)return $('#searchResults').innerHTML='';const notes=state.notes.filter(n=>n.text.toLowerCase().includes(q)).slice(0,10),tasks=state.tasks.filter(t=>t.title.toLowerCase().includes(q)).slice(0,10),events=state.events.filter(x=>x.title.toLowerCase().includes(q)).slice(0,10);$('#searchResults').innerHTML=[...notes.map(n=>`<div class="card"><strong>メモ</strong><div>${esc(n.text)}</div><div class="small">${n.date}</div></div>`),...tasks.map(t=>`<div class="card"><strong>${t.done?'✓ ':''}タスク</strong><div>${esc(t.title)}</div><div class="small">${t.date}</div></div>`),...events.map(x=>`<div class="card"><strong>予定</strong><div>${esc(x.title)}</div><div class="small">${x.date}</div></div>`)].join('')||'<div class="empty">見つかりません</div>'}}
 function isInstalled(){
- return window.matchMedia('(display-mode: fullscreen)').matches ||
-        window.matchMedia('(display-mode: standalone)').matches ||
+ return window.matchMedia('(display-mode: standalone)').matches ||
         window.navigator.standalone === true;
 }
 let installClickPending=false;
@@ -141,7 +140,7 @@ async function requestInstall(){
  installClickPending=true;
  setInstallUI();
  try{
-  const registration=await navigator.serviceWorker?.getRegistration('/worknote/');
+  const registration=await navigator.serviceWorker?.getRegistration('./');
   await registration?.update();
  }catch(error){console.warn('Install preparation update failed:',error)}
  clearTimeout(installWaitTimer);
@@ -166,7 +165,6 @@ window.addEventListener('appinstalled',()=>{
  toast('WORKNOTEをインストールしました');
 });
 window.matchMedia('(display-mode: standalone)').addEventListener?.('change',setInstallUI);
-window.matchMedia('(display-mode: fullscreen)').addEventListener?.('change',setInstallUI);
 $('#installBtn').onclick=requestInstall;
 $('#installPanelBtn').onclick=requestInstall;
 $$('.bottom-nav button').forEach(b=>b.onclick=()=>switchView(b.dataset.view));$('#quickAdd').onclick=()=>openQuickNote();$('#searchBtn').onclick=globalSearch;$('#modal').onclick=e=>{if(e.target===$('#modal'))closeModal()};
@@ -190,7 +188,7 @@ window.addEventListener('load',()=>{
  setTimeout(startApp,250);
  setInstallUI();
  if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('/worknote/sw.js', {scope:'/worknote/'})
+  navigator.serviceWorker.register('./sw.js', {scope:'./'})
    .then(async registration=>{
     try{await registration.update()}catch(error){console.warn('Service Worker update failed:',error)}
     setInstallUI();

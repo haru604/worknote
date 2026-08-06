@@ -1,10 +1,10 @@
-const CACHE = "worknote-v6.0.0";
+const CACHE = "worknote-v7.0.0";
 const BASE = "/worknote/";
 const APP_SHELL = [
   BASE,
   BASE + "index.html",
-  BASE + "styles.css?v=6.0.0",
-  BASE + "app.js?v=6.0.0",
+  BASE + "styles.css?v=7.0.0",
+  BASE + "app.js?v=7.0.0",
   BASE + "manifest.json",
   BASE + "icon-192.png",
   BASE + "icon-512.png",
@@ -13,7 +13,11 @@ const APP_SHELL = [
 ];
 
 self.addEventListener("install", event => {
-  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(APP_SHELL)).then(() => self.skipWaiting()));
+  event.waitUntil((async () => {
+    const cache = await caches.open(CACHE);
+    await Promise.allSettled(APP_SHELL.map(url => cache.add(url)));
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener("activate", event => {
@@ -34,11 +38,13 @@ self.addEventListener("fetch", event => {
     event.respondWith((async () => {
       try {
         const fresh = await fetch(request);
-        const cache = await caches.open(CACHE);
-        cache.put(BASE + "index.html", fresh.clone());
+        if (fresh && fresh.ok) {
+          const cache = await caches.open(CACHE);
+          await cache.put(BASE + "index.html", fresh.clone());
+        }
         return fresh;
       } catch (_) {
-        return (await caches.match(BASE + "index.html")) || (await caches.match(BASE));
+        return (await caches.match(BASE + "index.html")) || (await caches.match(BASE)) || Response.error();
       }
     })());
     return;
@@ -46,13 +52,13 @@ self.addEventListener("fetch", event => {
 
   event.respondWith((async () => {
     const cached = await caches.match(request);
-    const network = fetch(request).then(async response => {
+    const networkPromise = fetch(request).then(async response => {
       if (response && response.ok) {
         const cache = await caches.open(CACHE);
-        cache.put(request, response.clone());
+        await cache.put(request, response.clone());
       }
       return response;
     }).catch(() => null);
-    return cached || await network || new Response("", {status: 504});
+    return cached || await networkPromise || new Response("", {status: 504});
   })());
 });
