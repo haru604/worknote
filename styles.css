@@ -23,3 +23,19 @@
 .check-row{display:flex!important;align-items:center;gap:8px;margin-top:6px;font-weight:600}
 .check-row input{width:20px;height:20px;margin:0}
 @media (min-width:760px){.report-grid{grid-template-columns:1fr 1fr}.report-field{min-width:0}}
+
+/* v11 閲覧・削除・日報下書き */
+.note-card{cursor:pointer}.note-card:active{transform:scale(.995)}
+.note-viewer-modal{background:#fff;align-items:stretch}
+.note-viewer-modal .modal-sheet{border-radius:0;max-height:none;height:100dvh;padding:calc(10px + env(safe-area-inset-top)) 18px calc(18px + env(safe-area-inset-bottom));overflow:auto}
+.note-viewer-modal .modal-handle{display:none}
+.viewer-head{position:sticky;top:0;background:#fff;z-index:2;display:flex;justify-content:space-between;gap:10px;padding:4px 0 12px;border-bottom:1px solid var(--line)}
+.viewer-actions{display:flex;gap:8px}.viewer-head button{padding:9px 12px}
+.note-viewer,.report-viewer{max-width:680px;margin:0 auto;padding:22px 2px 40px}
+.note-viewer-type{display:inline-block;background:var(--blue2);color:#236bb8;border-radius:999px;padding:5px 9px;font-size:11px;font-weight:800}
+.note-viewer h1,.report-viewer h1{font-size:22px;line-height:1.45;margin:12px 0 6px}.note-viewer-meta{font-size:12px;color:var(--muted);margin-bottom:24px}
+.note-viewer-body{font-size:16px;line-height:1.8;overflow-wrap:anywhere}
+.report-viewer header{padding-bottom:18px;border-bottom:1px solid var(--line);margin-bottom:4px}.report-score{font-size:14px;font-weight:800;color:var(--blue);margin-top:8px}
+.report-view-section{padding:18px 0;border-bottom:1px solid var(--line)}.report-view-section h3{font-size:14px;margin:0 0 9px;color:#31506d}.report-view-section div,.report-view-section li{font-size:16px;line-height:1.75;overflow-wrap:anywhere}.report-view-section ol{margin:0;padding-left:22px}
+.draft-status{margin:8px 16px 0;background:#eef7ff;color:#27689e;border-radius:10px;padding:8px 10px;font-size:11px}
+.toast{display:flex;align-items:center;gap:12px}.toast button{border:0;background:#fff;color:#102033;border-radius:8px;padding:6px 9px;font-size:12px;font-weight:800}
