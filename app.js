@@ -1,6 +1,7 @@
 'use strict';
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const STORE='worknote_state_v1';
+const APP_VERSION='8.0.0';
 const pad=n=>String(n).padStart(2,'0');
 const isoDate=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 const uid=()=>crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2);
@@ -18,7 +19,8 @@ const DEFAULT={
   {id:uid(),title:'予約内容の確認',enabled:true,scope:'early',timing:'出勤時',notify:false}
  ],tasks:[],notes:[],events:[],focus:{},dayClosed:{},trash:[]
 };
-let state=load(), currentView='home', calCursor=new Date(), selectedDate=isoDate(new Date()), deferredPrompt=null;
+let state=load(), currentView='home', calCursor=new Date(), selectedDate=isoDate(new Date());
+let swRegistration=null, updateReloading=false;
 function clone(v){return JSON.parse(JSON.stringify(v))}
 function load(){try{const x=JSON.parse(localStorage.getItem(STORE));return x?Object.assign(clone(DEFAULT),x):clone(DEFAULT)}catch{return clone(DEFAULT)}}
 function save(){localStorage.setItem(STORE,JSON.stringify(state))}
@@ -70,7 +72,7 @@ function openEventModal(date){openModal(`<h2>予定を追加</h2><div class="fie
 function renderHistory(){const month=isoDate(new Date()).slice(0,7),tasks=state.tasks.filter(t=>t.date.startsWith(month)),done=tasks.filter(t=>t.done),carried=tasks.filter(t=>t.carriedFrom),workDays=Object.entries(state.shifts).filter(([d,s])=>d.startsWith(month)&&s!=='off').length,rate=tasks.length?Math.round(done.length/tasks.length*100):0;
  const byRule=state.rules.map(r=>{const ts=tasks.filter(t=>t.ruleId===r.id);return {name:r.title,total:ts.length,done:ts.filter(t=>t.done).length}}).filter(x=>x.total);
  $('#view-history').innerHTML=`<div class="history-summary"><div class="card"><span class="small">今月の出勤</span><strong>${workDays}日</strong></div><div class="card"><span class="small">タスク実施率</span><strong>${rate}%</strong></div><div class="card"><span class="small">完了タスク</span><strong>${done.length}</strong></div><div class="card"><span class="small">繰り越し</span><strong>${carried.length}</strong></div></div><section class="section"><div class="section-head"><h2>定型タスク実施状況</h2></div>${byRule.map(x=>`<div class="card"><div class="hero-row"><strong>${esc(x.name)}</strong><span>${x.done}/${x.total}</span></div><div class="progress" style="margin-top:10px"><i style="width:${Math.round(x.done/x.total*100)}%"></i></div></div>`).join('')||'<div class="empty">今月の記録はまだありません</div>'}</section><section class="section"><div class="section-head"><h2>最近の完了履歴</h2></div>${done.sort((a,b)=>(b.doneAt||'').localeCompare(a.doneAt||'')).slice(0,20).map(t=>`<div class="card"><strong>✓ ${esc(t.title)}</strong><div class="small">${t.date} ${t.doneAt?new Date(t.doneAt).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}):''}</div></div>`).join('')}</section>`}
-function renderSettings(){$('#view-settings').innerHTML=`<div class="card settings-card" data-setting="shift"><div class="settings-icon">▦</div><div><h3>勤務・シフト</h3><p>月間登録、CSV取込、勤務種類</p></div><button>›</button></div><div class="card settings-card" data-setting="rules"><div class="settings-icon">↻</div><div><h3>自動タスク</h3><p>出勤日ごとの継続業務</p></div><button>›</button></div><div class="card settings-card" data-setting="profile"><div class="settings-icon">✎</div><div><h3>表示・プロフィール</h3><p>名前、表示設定</p></div><button>›</button></div><div class="card settings-card" data-setting="data"><div class="settings-icon">⇩</div><div><h3>データ管理</h3><p>バックアップ、復元、CSV出力</p></div><button>›</button></div><div class="card settings-card" data-setting="notification"><div class="settings-icon">◉</div><div><h3>通知</h3><p>権限と通知設定</p></div><button>›</button></div><div class="danger-note">WORKNOTEは個人用メモです。お客様の氏名・電話番号・契約情報などの個人情報は保存しないでください。</div>`;$$('[data-setting]').forEach(x=>x.onclick=()=>({shift:openShiftSettings,rules:openRules,profile:openProfile,data:openData,notification:openNotifications}[x.dataset.setting])())}
+function renderSettings(){$('#view-settings').innerHTML=`<div class="card settings-card" data-setting="shift"><div class="settings-icon">▦</div><div><h3>勤務・シフト</h3><p>月間登録、CSV取込、勤務種類</p></div><button>›</button></div><div class="card settings-card" data-setting="rules"><div class="settings-icon">↻</div><div><h3>自動タスク</h3><p>出勤日ごとの継続業務</p></div><button>›</button></div><div class="card settings-card" data-setting="profile"><div class="settings-icon">✎</div><div><h3>表示・プロフィール</h3><p>名前、表示設定</p></div><button>›</button></div><div class="card settings-card" data-setting="update"><div class="settings-icon">⟳</div><div><h3>アプリ更新</h3><p>最新版を確認して更新・現在 v${APP_VERSION}</p></div><button>›</button></div><div class="card settings-card" data-setting="data"><div class="settings-icon">⇩</div><div><h3>データ管理</h3><p>バックアップ、復元、CSV出力</p></div><button>›</button></div><div class="card settings-card" data-setting="notification"><div class="settings-icon">◉</div><div><h3>通知</h3><p>権限と通知設定</p></div><button>›</button></div><div class="danger-note">WORKNOTEは個人用メモです。お客様の氏名・電話番号・契約情報などの個人情報は保存しないでください。</div>`;$$('[data-setting]').forEach(x=>x.onclick=()=>({shift:openShiftSettings,rules:openRules,profile:openProfile,update:openAppUpdate,data:openData,notification:openNotifications}[x.dataset.setting])())}
 function openShiftSettings(){openModal(`<h2>勤務・シフト</h2><div class="btn-row"><button class="primary" id="csvImport">CSV取込</button><button class="secondary" id="manualShift">手入力</button></div><section class="section"><h3>シフト種類</h3>${state.shiftTypes.map(s=>`<div class="list-row"><i style="width:12px;height:12px;border-radius:50%;background:${s.color}"></i><div class="grow"><strong>${esc(s.name)}</strong><div class="small">${s.start?`${s.start}〜${s.end}`:'休日'}</div></div><button class="secondary" data-edit-shift="${s.id}">編集</button></div>`).join('')}</section><button class="secondary" id="shiftTemplate" style="width:100%;margin-top:10px">CSVテンプレートを保存</button>`);$('#csvImport').onclick=()=>importCSV();$('#manualShift').onclick=()=>openManualShift();$('#shiftTemplate').onclick=downloadShiftTemplate;$$('[data-edit-shift]').forEach(b=>b.onclick=()=>openShiftTypeEdit(b.dataset.editShift))}
 function openManualShift(){const month=isoDate(new Date()).slice(0,7);openModal(`<h2>シフトを手入力</h2><div class="field"><label>日付</label><input type="date" id="shiftDate" value="${month}-01"></div><div class="field"><label>勤務</label><select id="shiftType">${state.shiftTypes.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select></div><div class="btn-row"><button class="secondary" id="cancel">キャンセル</button><button class="primary" id="saveShift">登録</button></div>`);$('#cancel').onclick=closeModal;$('#saveShift').onclick=()=>{const d=$('#shiftDate').value;state.shifts[d]=$('#shiftType').value;reconcileDate(d);closeModal();render();toast('シフトを登録しました')}}
 function openShiftTypeEdit(id){const s=state.shiftTypes.find(x=>x.id===id);openModal(`<h2>シフト種類を編集</h2><div class="field"><label>名称</label><input id="stName" value="${esc(s.name)}"></div><div class="grid2"><div class="field"><label>開始</label><input type="time" id="stStart" value="${s.start}"></div><div class="field"><label>終了</label><input type="time" id="stEnd" value="${s.end}"></div></div><div class="field"><label>表示色</label><input type="color" id="stColor" value="${s.color}"></div><button class="primary" id="saveST" style="width:100%">保存</button>`);$('#saveST').onclick=()=>{s.name=$('#stName').value.trim();s.start=$('#stStart').value;s.end=$('#stEnd').value;s.color=$('#stColor').value;save();closeModal();render();toast('保存しました')}}
@@ -92,88 +94,47 @@ function switchView(v){currentView=v;render();window.scrollTo(0,0)}
 function openModal(html){$('#modalContent').innerHTML=html;$('#modal').classList.remove('hidden')}
 function closeModal(){$('#modal').classList.add('hidden');$('#modalContent').innerHTML=''}
 function globalSearch(){openModal(`<h2>検索</h2><div class="field"><input id="globalQ" placeholder="メモ・タスク・予定を検索"></div><div id="searchResults"></div>`);$('#globalQ').oninput=e=>{const q=e.target.value.trim().toLowerCase();if(!q)return $('#searchResults').innerHTML='';const notes=state.notes.filter(n=>n.text.toLowerCase().includes(q)).slice(0,10),tasks=state.tasks.filter(t=>t.title.toLowerCase().includes(q)).slice(0,10),events=state.events.filter(x=>x.title.toLowerCase().includes(q)).slice(0,10);$('#searchResults').innerHTML=[...notes.map(n=>`<div class="card"><strong>メモ</strong><div>${esc(n.text)}</div><div class="small">${n.date}</div></div>`),...tasks.map(t=>`<div class="card"><strong>${t.done?'✓ ':''}タスク</strong><div>${esc(t.title)}</div><div class="small">${t.date}</div></div>`),...events.map(x=>`<div class="card"><strong>予定</strong><div>${esc(x.title)}</div><div class="small">${x.date}</div></div>`)].join('')||'<div class="empty">見つかりません</div>'}}
-function isInstalled(){
- return window.matchMedia('(display-mode: standalone)').matches ||
-        window.navigator.standalone === true;
+async function openAppUpdate(){
+ openModal(`<h2>アプリ更新</h2><div class="card"><strong>現在のバージョン</strong><div class="small">v${APP_VERSION}</div></div><p class="small">新しいバージョンが公開されているか確認します。メモやタスクのデータは消えません。</p><button class="primary" id="checkUpdateBtn" style="width:100%">最新版を確認</button>`);
+ $('#checkUpdateBtn').onclick=async()=>{
+  const button=$('#checkUpdateBtn');button.disabled=true;button.textContent='確認中…';
+  try{
+   if(!('serviceWorker' in navigator))throw new Error('unsupported');
+   const registration=swRegistration || await navigator.serviceWorker.getRegistration('./');
+   if(!registration)throw new Error('not-registered');
+   await registration.update();
+   const waiting=registration.waiting;
+   if(waiting){button.textContent='更新しています…';waiting.postMessage({type:'SKIP_WAITING'});return;}
+   if(registration.installing){
+    button.textContent='更新を準備中…';
+    registration.installing.addEventListener('statechange',()=>{
+     if(registration.waiting)registration.waiting.postMessage({type:'SKIP_WAITING'});
+     else if(registration.installing?.state==='activated'){updateReloading=true;location.reload();}
+    });
+    return;
+   }
+   button.textContent='最新版です';toast('WORKNOTEは最新版です');
+  }catch(error){console.error('Update check failed:',error);button.disabled=false;button.textContent='もう一度確認';toast('更新確認に失敗しました');}
+ };
 }
-let installClickPending=false;
-let installWaitTimer=null;
-function setInstallUI(){
- const installed=isInstalled();
- const buttons=[$('#installBtn'),$('#installPanelBtn')].filter(Boolean);
- const panel=$('#installPanel');
- if(installed){
-  buttons.forEach(button=>button.classList.add('hidden'));
-  panel?.classList.add('hidden');
-  return;
- }
- panel?.classList.remove('hidden');
- buttons.forEach(button=>{
-  button.classList.remove('hidden');
-  button.disabled=false;
-  button.textContent=installClickPending?'準備中…':'インストール';
-  button.removeAttribute('aria-disabled');
+function watchServiceWorker(registration){
+ swRegistration=registration;
+ registration.addEventListener('updatefound',()=>{
+  const worker=registration.installing;if(!worker)return;
+  worker.addEventListener('statechange',()=>{
+   if(worker.state==='installed' && navigator.serviceWorker.controller)toast('新しい更新を利用できます');
+  });
  });
 }
-async function showInstallPrompt(){
- if(!deferredPrompt)return false;
- const promptEvent=deferredPrompt;
- deferredPrompt=null;
- installClickPending=false;
- clearTimeout(installWaitTimer);
- setInstallUI();
- try{
-  await promptEvent.prompt();
-  const choice=await promptEvent.userChoice;
-  if(choice.outcome!=='accepted')setInstallUI();
-  return choice.outcome==='accepted';
- }catch(error){
-  console.error('Install prompt failed:',error);
-  setInstallUI();
-  toast('インストールを開始できませんでした');
-  return false;
- }
-}
-async function requestInstall(){
- if(isInstalled())return;
- if(deferredPrompt){await showInstallPrompt();return;}
- installClickPending=true;
- setInstallUI();
- try{
-  const registration=await navigator.serviceWorker?.getRegistration('./');
-  await registration?.update();
- }catch(error){console.warn('Install preparation update failed:',error)}
- clearTimeout(installWaitTimer);
- installWaitTimer=setTimeout(()=>{
-  if(!installClickPending)return;
-  installClickPending=false;
-  setInstallUI();
-  toast('インストール準備が完了していません。少し待ってから押してください');
- },8000);
-}
-window.addEventListener('beforeinstallprompt',event=>{
- event.preventDefault();
- deferredPrompt=event;
- setInstallUI();
- if(installClickPending)showInstallPrompt();
+navigator.serviceWorker?.addEventListener('controllerchange',()=>{
+ if(updateReloading)return;updateReloading=true;location.reload();
 });
-window.addEventListener('appinstalled',()=>{
- deferredPrompt=null;
- installClickPending=false;
- clearTimeout(installWaitTimer);
- setInstallUI();
- toast('WORKNOTEをインストールしました');
-});
-window.matchMedia('(display-mode: standalone)').addEventListener?.('change',setInstallUI);
-$('#installBtn').onclick=requestInstall;
-$('#installPanelBtn').onclick=requestInstall;
 $$('.bottom-nav button').forEach(b=>b.onclick=()=>switchView(b.dataset.view));$('#quickAdd').onclick=()=>openQuickNote();$('#searchBtn').onclick=globalSearch;$('#modal').onclick=e=>{if(e.target===$('#modal'))closeModal()};
 function startApp(){
  try{
   $('#splash')?.classList.add('hidden');
   $('#app')?.classList.remove('hidden');
   render();
-  setInstallUI();
   const params=new URLSearchParams(location.search);
   if(params.get('action')==='quick-note')openQuickNote();
   if(params.get('view')&&['home','notes','calendar','history','settings'].includes(params.get('view')))switchView(params.get('view'));
@@ -186,16 +147,12 @@ function startApp(){
 
 window.addEventListener('load',()=>{
  setTimeout(startApp,250);
- setInstallUI();
  if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('./sw.js', {scope:'./'})
+  navigator.serviceWorker.register('./sw.js', {scope:'./',updateViaCache:'none'})
    .then(async registration=>{
+    watchServiceWorker(registration);
     try{await registration.update()}catch(error){console.warn('Service Worker update failed:',error)}
-    setInstallUI();
    })
-   .catch(error=>{
-    console.error('Service Worker registration failed:',error);
-    setInstallUI();
-   });
+   .catch(error=>console.error('Service Worker registration failed:',error));
  }
 });

@@ -1,10 +1,10 @@
-const CACHE = "worknote-v7.0.0";
+const CACHE = "worknote-v8.0.0";
 const BASE = "/worknote/";
 const APP_SHELL = [
   BASE,
   BASE + "index.html",
-  BASE + "styles.css?v=7.0.0",
-  BASE + "app.js?v=7.0.0",
+  BASE + "styles.css?v=8.0.0",
+  BASE + "app.js?v=8.0.0",
   BASE + "manifest.json",
   BASE + "icon-192.png",
   BASE + "icon-512.png",
@@ -61,4 +61,8 @@ self.addEventListener("fetch", event => {
     }).catch(() => null);
     return cached || await networkPromise || new Response("", {status: 504});
   })());
+});
+
+self.addEventListener("message", event => {
+  if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
 });

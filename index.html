@@ -11,7 +11,7 @@
   <link rel="manifest" href="./manifest.json">
   <link rel="apple-touch-icon" sizes="192x192" href="./icon-192.png">
   <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png">
-  <link rel="stylesheet" href="./styles.css?v=7.0.0">
+  <link rel="stylesheet" href="./styles.css?v=8.0.0">
   <title>WORKNOTE</title>
 </head>
 <body>
@@ -24,12 +24,10 @@
     <header class="topbar">
       <div><div id="headerDate" class="date-label"></div><h1 id="pageTitle">WORKNOTE</h1></div>
       <div class="top-actions">
-        <button id="installBtn" class="install-btn" type="button">インストール</button>
         <button id="searchBtn" class="icon-btn" aria-label="検索">⌕</button>
       </div>
     </header>
 
-    <div id="installPanel" class="install-panel hidden"><div><strong>WORKNOTEをアプリとして使う</strong><span>ホーム画面から独立したアプリとして起動</span></div><button id="installPanelBtn" type="button">インストール</button></div>
     <main id="view-home" class="view active"></main>
     <main id="view-notes" class="view"></main>
     <main id="view-calendar" class="view"></main>
@@ -51,6 +49,6 @@
   </div>
   <div id="toast" class="toast hidden"></div>
   <input id="fileInput" type="file" hidden>
-  <script src="./app.js?v=7.0.0" defer></script>
+  <script src="./app.js?v=8.0.0" defer></script>
 </body>
 </html>
