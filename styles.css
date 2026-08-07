@@ -58,3 +58,27 @@
 .staff-report-card{padding:16px}.staff-status{display:inline-flex;align-items:center;justify-content:center;border-radius:999px;padding:6px 10px;font-size:11px;font-weight:900;white-space:nowrap}.staff-status.good{background:#dcf5ea;color:#166847}.staff-status.warn{background:#fff0d5;color:#8b5b00}.staff-status.danger{background:#fee9eb;color:#a32934}.staff-status.muted{background:#edf2f7;color:#607184}.staff-card-foot{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px;padding-top:10px;border-top:1px solid var(--line);font-size:11px;color:var(--muted)}.staff-card-foot b{margin-left:auto;font-size:22px;color:#71859a}
 .staff-analysis{background:#f5f8fb;border-radius:18px;padding:15px;margin:14px 0 12px}.staff-analysis-top{display:flex;justify-content:space-between;gap:14px;align-items:flex-start}.staff-analysis-top .staff-status{margin-top:5px}.staff-trend{text-align:right}.staff-trend span,.staff-trend strong{display:block}.staff-trend strong{margin-top:5px;font-size:13px}.staff-analysis-summary{margin-top:14px;background:#fff;border-radius:13px;padding:12px;font-size:13px;line-height:1.7}.staff-analysis-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}.staff-analysis-grid>div{background:#fff;border-radius:13px;padding:12px;min-width:0}.staff-analysis-grid h3{font-size:13px;margin:0 0 7px;color:#31506d}.staff-analysis-grid ul{padding-left:18px;margin:0}.staff-analysis-grid li{font-size:12px;line-height:1.6;margin:5px 0}.staff-analysis-grid p{margin:0}.staff-next-action{margin-top:10px;background:#102f50;color:#fff;border-radius:13px;padding:12px}.staff-next-action span,.staff-next-action strong{display:block}.staff-next-action span{font-size:10px;color:#bfd1e4;margin-bottom:5px}.staff-next-action strong{font-size:13px;line-height:1.55}.staff-analysis-date{margin-top:8px;text-align:right}.staff-ai-refresh{width:100%;margin-bottom:8px}
 @media(max-width:430px){.hero-row{gap:8px}.hero-greeting{font-size:21px!important}.shift-pill{font-size:13px;padding:8px 10px}.staff-analysis-grid{grid-template-columns:1fr}.viewer-head{align-items:center}.viewer-head>div h3{margin:0}}
+
+
+/* v19 スタッフマスター・育成目標・次回確認 */
+.staff-picker-block{padding:10px 16px 2px}.staff-picker-label{font-weight:800;margin-bottom:7px}.staff-picker{display:flex;gap:7px;overflow:auto;padding-bottom:5px}.staff-pick{border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 11px;white-space:nowrap;font-size:12px;font-weight:800}.staff-pick.active{background:var(--navy);border-color:var(--navy);color:#fff}
+.staff-directory-stats{grid-template-columns:repeat(3,1fr)}.compact{padding:9px 12px!important;flex:none}.staff-manage-row{display:flex;align-items:center;gap:10px}.staff-name-btn{flex:1;text-align:left;border:0;background:none;padding:4px;font-weight:850;color:var(--text)}.staff-name-btn span{display:block;margin-top:4px;font-weight:500}.compact-empty{padding:16px 10px}.staff-control-section{margin:18px 0}.goal-row{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center}.goal-main{display:flex;align-items:center;gap:10px;border:0;background:none;text-align:left;padding:0;color:var(--text)}.goal-status{font-size:10px;font-weight:900;border-radius:999px;padding:5px 8px;background:#e2efff;color:#1f66b2;white-space:nowrap}.goal-status.done{background:#dcf5ea;color:#166847}.goal-status.hold{background:#f1e8ff;color:#6840a3}.follow-row{display:grid;grid-template-columns:38px 1fr auto;align-items:center;gap:8px}.follow-row.done{opacity:.6}.follow-row.done b{text-decoration:line-through}
+@media(max-width:430px){.staff-directory-stats{grid-template-columns:repeat(3,1fr)}.staff-directory-stats>div{padding:11px 9px}.staff-directory-stats strong{font-size:20px}.staff-manage-row{padding:12px}.staff-picker-block{padding-left:0;padding-right:0}}
+
+/* v20 AI期間イベント */
+.calendar-event-card .event-title-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px}.calendar-event-card .event-category{flex:none}.calendar-event-card strong{line-height:1.45}
+
+
+/* v21 ホーム・イベント一覧 */
+.home-events-card{padding:3px 14px;margin-bottom:0}
+.home-event-row{width:100%;border:0;background:transparent;display:grid;grid-template-columns:30px minmax(0,1fr) auto 14px;gap:8px;align-items:center;text-align:left;padding:12px 0;border-bottom:1px solid var(--line);color:var(--text)}
+.home-event-row:last-child{border-bottom:0}
+.home-event-row:active{opacity:.65}
+.home-event-mark{width:28px;height:28px;border-radius:9px;background:var(--blue2);color:#236bb8;display:grid;place-items:center;font-size:12px;font-weight:900}
+.home-event-main{min-width:0}
+.home-event-main b{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px;line-height:1.4}
+.home-event-main small{display:block;margin-top:3px;color:var(--muted);font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.home-event-status{font-size:10px;font-weight:900;border-radius:999px;padding:5px 7px;background:#eef3f8;color:#607184;white-space:nowrap}
+.home-event-status.active{background:#dcf5ea;color:#166847}
+.home-event-arrow{color:#8ba0b3;font-size:20px}
+.home-events-empty{padding:18px 6px;text-align:center;color:var(--muted);font-size:12px}
