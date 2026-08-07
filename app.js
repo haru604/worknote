@@ -1,7 +1,7 @@
 'use strict';
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const STORE='worknote_state_v1';
-const APP_VERSION='22.0.0';
+const APP_VERSION='23.0.0';
 const REPORT_DRAFT_STORE='worknote_report_drafts_v1';
 const GEMINI_KEY_STORE='worknote_gemini_api_key_v1';
 const V15_CLEANUP_STORE='worknote_v15_cleanup_done';
@@ -101,7 +101,7 @@ function openNoteViewer(id){const n=state.notes.find(x=>x.id===id);if(!n)return;
 function metricNumber(v){const n=Number(String(v??'').replace(/,/g,''));return Number.isFinite(n)?n:0}
 const PERFORMANCE_FIELDS=[
  ['new','新規'],['deviceChange','機種変更'],['cellUp','セルアップ'],['cellDown','セルダウン'],
- ['supportFixed','サポート定額'],['paidSupport','有償サポート'],['card','クレカ'],['gold','内GOLD'],
+ ['supportFixed','サポート定額'],['paidSupport','有償サポート'],['plusOne','+1Collection'],['card','クレカ'],['gold','内GOLD'],
  ['bank','じぶん銀行'],['hikari','光'],['electricity','でんき'],['pixel','Pixel']
 ];
 function performanceValue(data,key){return metricNumber(data?.metrics?.[key])}
