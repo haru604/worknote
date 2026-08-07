@@ -1,7 +1,7 @@
 'use strict';
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const STORE='worknote_state_v1';
-const APP_VERSION='15.0.0';
+const APP_VERSION='16.0.0';
 const REPORT_DRAFT_STORE='worknote_report_drafts_v1';
 const GEMINI_KEY_STORE='worknote_gemini_api_key_v1';
 const V15_CLEANUP_STORE='worknote_v15_cleanup_done';
@@ -115,9 +115,42 @@ function openEventModal(date){
  const draw=()=>{const task=$('#entryType').value==='task';$('#entryFields').innerHTML=`<div class="field"><label>${task?'タスク名':'予定名'}</label><input id="entryTitle"></div><div class="grid2"><div class="field"><label>日付</label><input type="date" id="entryDate" value="${date}"></div>${task?`<div class="field"><label>タイミング</label><select id="entryTiming"><option>終日</option><option>出勤時</option><option>昼</option><option>退勤前</option></select></div>`:`<div class="field"><label>時間</label><input type="time" id="entryTime"></div>`}</div>${task?`<div class="field"><label>優先度</label><select id="entryPriority"><option>高</option><option selected>中</option><option>低</option></select></div>`:''}<div class="field"><label>詳細</label><textarea id="entryDetail"></textarea></div>`};
  $('#entryType').onchange=draw;draw();$('#cancel').onclick=closeModal;$('#saveEntry').onclick=()=>{const title=$('#entryTitle').value.trim();if(!title)return toast('内容を入力してください');const d=$('#entryDate').value,detail=$('#entryDetail').value.trim(),isTask=$('#entryType').value==='task';if(isTask){state.tasks.push({id:uid(),title,date:d,done:false,createdAt:nowISO(),auto:false,timing:$('#entryTiming').value,priority:$('#entryPriority').value,detail})}else state.events.push({id:uid(),title,date:d,time:$('#entryTime').value,detail,createdAt:nowISO()});save();closeModal();render();toast(isTask?'タスクを保存しました':'予定を保存しました')};
 }
-function renderAI(){runAIAutomation(false);const open=state.ai.inbox.filter(x=>x.status==='open');
- $('#view-ai').innerHTML=`<div class="ai-dashboard"><div class="viewer-head"><div><h1>AI副店長補佐</h1><p class="small">予定・タスク・メモ・日報・MTGを自動確認しています。</p></div><div class="viewer-actions"><button class="secondary" id="aiChatBtn">AIチャット</button><button class="secondary" id="aiRulesBtn">記憶ルール</button></div></div><div class="ai-status-row"><span>動作：${state.ai.mode==='geminiDirect'?'Gemini直接接続':'端末内スマート管理'}</span><span>状態：${esc(state.ai.mode==='geminiDirect'?(state.ai.connectionStatus||'未接続'):'端末内で動作中')}</span><span>最終確認：${state.ai.lastRun?new Date(state.ai.lastRun).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}):'未実行'}</span></div>${state.ai.lastError?`<div class="warning">${esc(state.ai.lastError)}。端末内スマート管理は継続しています。</div>`:''}${open.map(aiInboxHTML).join('')||'<div class="empty">現在、対応が必要な項目はありません</div>'}</div>`;
- $('#aiChatBtn').onclick=openAIChat;$('#aiRulesBtn').onclick=openAIRules;$$('[data-ai-done]').forEach(b=>b.onclick=()=>{const x=state.ai.inbox.find(a=>a.id===b.dataset.aiDone);if(x)x.status='done';save();renderAI()});$$('[data-ai-action]').forEach(b=>b.onclick=()=>executeAIAction(b.dataset.aiAction,b.dataset.aiId));
+function normalizeStaffName(name){return String(name||'').trim().replace(/[　\s]+/g,'').replace(/(さん|くん|君|氏|様)$/,'')}
+function extractStaffNames(text){
+ const found=new Set(),source=String(text||'');
+ const known=new Set(state.notes.filter(n=>n.type==='staff'&&n.staff).map(n=>normalizeStaffName(n.staff)).filter(Boolean));
+ source.match(/[一-龯々ヶヵ]{1,8}(?:さん|くん|君|氏)/g)?.forEach(x=>found.add(normalizeStaffName(x)));
+ known.forEach(name=>{if(source.includes(name))found.add(name)});
+ return [...found].filter(name=>name&&name!==normalizeStaffName(state.profile.name)&&!['店長','副店長','スタッフ','お客様'].includes(name));
+}
+function buildStaffReports(){
+ const reports={};
+ const add=(name,entry)=>{name=normalizeStaffName(name);if(!name)return;reports[name]=reports[name]||{name,entries:[]};reports[name].entries.push(entry)};
+ state.notes.filter(n=>!n.archived).forEach(n=>{
+  const date=n.date||String(n.createdAt||'').slice(0,10)||'';
+  if(n.type==='staff'&&n.staff)add(n.staff,{date,type:'スタッフメモ',text:n.text||'',sourceId:n.id});
+  if(n.type==='dailyReport'){
+   const data=n.reportData||{},parts=[];
+   REPORT_FIELDS.forEach(([key,label])=>{const value=String(data[key]||'').trim();if(value)parts.push({label,text:value})});
+   const all=parts.map(x=>x.text).join('\n');
+   extractStaffNames(all).forEach(name=>{const related=parts.filter(x=>x.text.includes(name)||x.text.includes(name+'さん')).map(x=>`【${x.label}】${x.text}`).join('\n');add(name,{date,type:'日報',text:related||all,sourceId:n.id})});
+  }
+  if(n.type==='meeting'){
+   const text=n.text||'';extractStaffNames(text).forEach(name=>add(name,{date,type:'MTG',text,sourceId:n.id}));
+  }
+ });
+ return Object.values(reports).map(r=>{r.entries.sort((a,b)=>(b.date||'').localeCompare(a.date||''));r.latest=r.entries[0]?.date||'';return r}).sort((a,b)=>(b.latest||'').localeCompare(a.latest||'')||a.name.localeCompare(b.name,'ja'));
+}
+function staffReportCardHTML(r){const recent=r.entries.slice(0,2);return `<button class="card staff-report-card" data-staff-report="${esc(r.name)}"><div class="staff-report-head"><div><span class="note-viewer-type">スタッフ別報告書</span><h3>${esc(r.name)}さん</h3></div><span class="staff-report-count">${r.entries.length}件</span></div><div class="small">最終記録：${esc(r.latest||'未記録')}</div><div class="staff-report-preview">${recent.map(x=>`<div><b>${esc(x.date)}</b> ${esc(x.type)}：${esc((x.text||'').replace(/\s+/g,' ').slice(0,70))}${(x.text||'').length>70?'…':''}</div>`).join('')}</div></button>`}
+function openStaffReport(name){
+ const report=buildStaffReports().find(x=>x.name===name);if(!report)return toast('報告書が見つかりません');
+ const entries=report.entries.map(x=>`<section class="staff-report-entry"><div class="staff-report-entry-meta"><b>${esc(x.date||'日付なし')}</b><span>${esc(x.type)}</span></div><div>${displayMultiline(x.text)}</div></section>`).join('');
+ openModal(`<div class="viewer-head"><button class="secondary" id="closeStaffReport">閉じる</button></div><article class="report-viewer staff-report-viewer"><header><div class="note-viewer-type">スタッフ別報告書</div><h1>${esc(report.name)}さん</h1><div class="note-viewer-meta">記録 ${report.entries.length}件・最終更新 ${esc(report.latest||'未記録')}</div></header><section class="staff-report-summary"><h3>AI管理用まとめ</h3><p>スタッフメモ、日報、MTGから${esc(report.name)}さんに関係する記録を日付順にまとめています。</p></section>${entries||'<div class="empty">記録はありません</div>'}</article>`, 'note-viewer');
+ $('#closeStaffReport').onclick=closeModal;
+}
+function renderAI(){runAIAutomation(false);const open=state.ai.inbox.filter(x=>x.status==='open'),staffReports=buildStaffReports();
+ $('#view-ai').innerHTML=`<div class="ai-dashboard"><div class="viewer-head"><div><h1>AI副店長補佐</h1><p class="small">予定・タスク・メモ・日報・MTGを自動確認しています。</p></div><div class="viewer-actions"><button class="secondary" id="aiChatBtn">AIチャット</button><button class="secondary" id="aiRulesBtn">記憶ルール</button></div></div><div class="ai-status-row"><span>動作：${state.ai.mode==='geminiDirect'?'Gemini直接接続':'端末内スマート管理'}</span><span>状態：${esc(state.ai.mode==='geminiDirect'?(state.ai.connectionStatus||'未接続'):'端末内で動作中')}</span><span>最終確認：${state.ai.lastRun?new Date(state.ai.lastRun).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}):'未実行'}</span></div>${state.ai.lastError?`<div class="warning">${esc(state.ai.lastError)}。端末内スマート管理は継続しています。</div>`:''}<section class="section"><div class="section-head"><h2>スタッフ別報告書</h2><span class="small">${staffReports.length}名</span></div>${staffReports.map(staffReportCardHTML).join('')||'<div class="empty">日報に「〇〇さん」と記入するか、スタッフメモに名前を登録すると、ここに報告書が作成されます</div>'}</section><section class="section"><div class="section-head"><h2>対応候補</h2><span class="small">${open.length}件</span></div>${open.map(aiInboxHTML).join('')||'<div class="empty">現在、対応が必要な項目はありません</div>'}</section></div>`;
+ $('#aiChatBtn').onclick=openAIChat;$('#aiRulesBtn').onclick=openAIRules;$$('[data-staff-report]').forEach(b=>b.onclick=()=>openStaffReport(b.dataset.staffReport));$$('[data-ai-done]').forEach(b=>b.onclick=()=>{const x=state.ai.inbox.find(a=>a.id===b.dataset.aiDone);if(x)x.status='done';save();renderAI()});$$('[data-ai-action]').forEach(b=>b.onclick=()=>executeAIAction(b.dataset.aiAction,b.dataset.aiId));
 }
 function renderSettings(){$('#view-settings').innerHTML=`<div class="card settings-card" data-setting="shift"><div class="settings-icon">▦</div><div><h3>勤務・シフト</h3><p>月間登録、CSV取込、勤務種類</p></div><button>›</button></div><div class="card settings-card" data-setting="rules"><div class="settings-icon">↻</div><div><h3>自動タスク</h3><p>出勤日ごとの継続業務</p></div><button>›</button></div><div class="card settings-card" data-setting="ai"><div class="settings-icon">AI</div><div><h3>AI副店長補佐</h3><p>自動化、判断ルール、API接続</p></div><button>›</button></div><div class="card settings-card" data-setting="profile"><div class="settings-icon">✎</div><div><h3>表示・プロフィール</h3><p>名前、表示設定</p></div><button>›</button></div><div class="card settings-card" data-setting="update"><div class="settings-icon">⟳</div><div><h3>アプリ更新</h3><p>最新版を確認して更新・現在 v${APP_VERSION}</p></div><button>›</button></div><div class="card settings-card" data-setting="data"><div class="settings-icon">⇩</div><div><h3>データ管理</h3><p>バックアップ、復元、CSV出力</p></div><button>›</button></div><div class="card settings-card" data-setting="notification"><div class="settings-icon">◉</div><div><h3>通知</h3><p>通知全体・自動タスク別のON／OFF</p></div><button>›</button></div><div class="danger-note">WORKNOTEは個人用メモです。お客様の氏名・電話番号・契約情報などの個人情報は保存しないでください。</div>`;$$('[data-setting]').forEach(x=>x.onclick=()=>({shift:openShiftSettings,rules:openRules,ai:openAISettings,profile:openProfile,update:openAppUpdate,data:openData,notification:openNotifications}[x.dataset.setting])())}
 function openShiftSettings(){openModal(`<h2>勤務・シフト</h2><div class="btn-row"><button class="primary" id="csvImport">CSV取込</button><button class="secondary" id="manualShift">手入力</button></div><section class="section"><h3>シフト種類</h3>${state.shiftTypes.map(s=>`<div class="list-row"><i style="width:12px;height:12px;border-radius:50%;background:${s.color}"></i><div class="grow"><strong>${esc(s.name)}</strong><div class="small">${s.start?`${s.start}〜${s.end}`:'休日'}</div></div><button class="secondary" data-edit-shift="${s.id}">編集</button></div>`).join('')}</section><button class="secondary" id="shiftTemplate" style="width:100%;margin-top:10px">CSVテンプレートを保存</button>`);$('#csvImport').onclick=()=>importCSV();$('#manualShift').onclick=()=>openManualShift();$('#shiftTemplate').onclick=downloadShiftTemplate;$$('[data-edit-shift]').forEach(b=>b.onclick=()=>openShiftTypeEdit(b.dataset.editShift))}
