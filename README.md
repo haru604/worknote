@@ -1,6 +1,10 @@
-# WORKNOTE v14
+# WORKNOTE v15
 
 ## 更新内容
+- 利用開始前の日付に残っていた過去タスクを初回更新時に削除
+- 古いタスク由来のAI警告をリセット
+- 下部ナビの「履歴」を廃止し「AI」へ変更
+- AI副店長補佐を常設の専用画面として表示
 - Gemini APIをCloudflare Workerなしでアプリから直接利用可能
 - 設定画面でGemini APIキーを入力・端末内に保存
 - 推奨モデルを `gemini-3.1-flash-lite` に更新
