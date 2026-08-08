@@ -1,10 +1,10 @@
-const CACHE = "worknote-v23.0";
+const CACHE = "worknote-v24.0";
 const BASE = "/worknote/";
 const APP_SHELL = [
   BASE,
   BASE + "index.html",
-  BASE + "styles.css?v=23.0.0",
-  BASE + "app.js?v=23.0.0",
+  BASE + "styles.css?v=24.0.0",
+  BASE + "app.js?v=24.0.0",
   BASE + "manifest.json",
   BASE + "icon-192.png",
   BASE + "icon-512.png",
