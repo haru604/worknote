@@ -115,3 +115,12 @@
 .self-growth-ai{margin-top:14px;border-radius:14px;background:#eef6ff;padding:13px;color:var(--text)}
 .self-growth-ai .small{display:block;color:#27689e;font-weight:900;margin-bottom:6px}
 .self-growth-ai div{font-size:14px;line-height:1.7}
+
+
+/* v25 MTGリニューアル・業務連絡 */
+.tag.confirmed{background:#dcf5ea;color:#166847}.tag.unconfirmed{background:#fff0d5;color:#8b5b00}
+.meeting-raw-memo textarea{min-height:50dvh;font-size:17px;line-height:1.7}
+.meeting-ai-preview{background:#eef6ff;border-radius:12px;padding:10px 12px;margin:10px 0}.meeting-ai-preview p{margin:6px 0 0;font-size:11px;color:var(--muted)}
+.meeting-minutes-section{padding:18px 0;border-bottom:1px solid var(--line)}.meeting-minutes-section h2{font-size:15px;margin:0 0 10px;color:#264b6d}.meeting-minutes-section ul{margin:0;padding-left:20px}.meeting-minutes-section li{margin:7px 0;line-height:1.6}
+.meeting-action-list,.meeting-staff-note-list{display:grid;gap:8px}.meeting-action-item,.meeting-staff-note-item{display:grid;grid-template-columns:auto 1fr;gap:9px;align-items:start;background:#f6f9fc;border-radius:12px;padding:10px}.meeting-action-item input,.meeting-staff-note-item input{width:20px;height:20px;margin-top:2px}.meeting-action-item b,.meeting-staff-note-item b{display:block;font-size:13px}.meeting-action-item span,.meeting-staff-note-item span{display:block;font-size:11px;color:var(--muted);margin-top:4px;line-height:1.5}
+.meeting-tools{padding:18px 0}.meeting-revise-box{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:10px}.meeting-revise-box input{border:1px solid #cad6e2;border-radius:12px;padding:11px;min-width:0}.meeting-original{margin:8px 0 30px;background:#f8fafc;border-radius:13px;padding:12px}.meeting-original summary{font-weight:800}.meeting-original div{margin-top:12px;line-height:1.7;font-size:13px;color:#516276}
