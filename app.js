@@ -1,7 +1,7 @@
 'use strict';
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const STORE='worknote_state_v1';
-const APP_VERSION='26.0.0';
+const APP_VERSION='26.1.0';
 const REPORT_DRAFT_STORE='worknote_report_drafts_v1';
 const GEMINI_KEY_STORE='worknote_gemini_api_key_v1';
 const V15_CLEANUP_STORE='worknote_v15_cleanup_done';
@@ -55,7 +55,7 @@ let currentView='home', calCursor=new Date(), selectedDate=isoDate(new Date());
 let swRegistration=null, updateReloading=false;
 function clone(v){return JSON.parse(JSON.stringify(v))}
 function load(){try{const x=JSON.parse(localStorage.getItem(STORE));return x?Object.assign(clone(DEFAULT),x):clone(DEFAULT)}catch{return clone(DEFAULT)}}
-function save(){localStorage.setItem(STORE,JSON.stringify(state))}
+function save(){localStorage.setItem(STORE,JSON.stringify(state));try{exportRivalPlusBridge()}catch(_){}}
 function toast(t,actionLabel='',action=null,duration=2200){const e=$('#toast');e.innerHTML=`<span>${esc(t)}</span>${actionLabel?`<button id="toastAction">${esc(actionLabel)}</button>`:''}`;e.classList.remove('hidden');clearTimeout(toast.t);if(actionLabel&&$('#toastAction'))$('#toastAction').onclick=()=>{clearTimeout(toast.t);e.classList.add('hidden');action?.()};toast.t=setTimeout(()=>e.classList.add('hidden'),duration)}
 function formatDate(d){return new Intl.DateTimeFormat('ja-JP',{month:'long',day:'numeric',weekday:'long'}).format(d)}
 function shiftByDate(date){const id=state.shifts[date];return state.shiftTypes.find(x=>x.id===id)}
@@ -306,6 +306,30 @@ function reportWorkday(date){const s=shiftByDate(date);if(!s)return false;return
 async function checkReportNotification(){if(!state.settings.notifications||state.settings.notificationMaster===false||state.settings.reportReminderEnabled===false||Notification.permission!=='granted')return;const date=isoDate(new Date());if(!reportWorkday(date))return;if(state.notes.some(n=>n.type==='dailyReport'&&n.date===date))return;const now=`${pad(new Date().getHours())}:${pad(new Date().getMinutes())}`,due=state.settings.reportReminderTime||'22:00',key=`report:${date}:${due}`;state.settings.notificationLog=state.settings.notificationLog||{};if(now>=due&&!state.settings.notificationLog[key]){const ok=await showDeviceNotification('今日の日報が未入力です','1日の振り返りを記録しましょう。',`daily-report-${date}`,`./?action=daily-report&date=${date}`);if(ok){state.settings.notificationLog[key]=nowISO();save()}}}
 
 
+
+
+/* v26.1 RIVAL+ bridge: same-origin localStorage share */
+const RIVALPLUS_BRIDGE_STORE='worknote_rivalplus_bridge_v1';
+function exportRivalPlusBridge(){
+ const today=isoDate(new Date()), months=new Set();
+ state.notes.filter(n=>!n.archived&&n.type==='dailyReport'&&n.date).forEach(n=>months.add(String(n.date).slice(0,7)));
+ Object.keys(state.shifts||{}).forEach(d=>months.add(String(d).slice(0,7)));
+ months.add(today.slice(0,7));
+ const out={version:1,source:'WORKNOTE',worknoteVersion:APP_VERSION,profile:{name:state.profile?.name||'ヒガ'},updatedAt:nowISO(),months:{}};
+ [...months].sort().forEach(key=>{
+  const reports=state.notes.filter(n=>!n.archived&&n.type==='dailyReport'&&String(n.date||'').startsWith(key));
+  const byDate={};
+  reports.forEach(n=>{const v=performanceValue(n.reportData||{},'plusOne');byDate[n.date]=(byDate[n.date]||0)+v});
+  const plusOneDaily=Object.entries(byDate).sort((a,b)=>a[0].localeCompare(b[0])).map(([date,value])=>({date,value}));
+  const plusOneTotal=plusOneDaily.reduce((sum,x)=>sum+metricNumber(x.value),0);
+  const workDates=Object.keys(state.shifts||{}).filter(d=>String(d).startsWith(key)&&reportWorkday(d)).sort();
+  const completedWorkdays=workDates.filter(d=>d<today).length;
+  const remainingWorkdays=key<today.slice(0,7)?0:key>today.slice(0,7)?workDates.length:workDates.filter(d=>d>=today).length;
+  out.months[key]={plusOneTotal,plusOneDaily,workDates,completedWorkdays,remainingWorkdays,totalWorkdays:workDates.length,lastUpdatedDate:plusOneDaily.at(-1)?.date||''};
+ });
+ localStorage.setItem(RIVALPLUS_BRIDGE_STORE,JSON.stringify(out));
+ return out;
+}
 const MTG_TYPES=['店舗ミーティング','個別面談','実績会議','朝礼・終礼','その他'];
 const AI_MEETING_MINUTES_SCHEMA={type:'OBJECT',properties:{summary:{type:'STRING'},decisions:{type:'ARRAY',items:{type:'STRING'}},actions:{type:'ARRAY',items:{type:'OBJECT',properties:{title:{type:'STRING'},owner:{type:'STRING'},dueDate:{type:'STRING'},done:{type:'BOOLEAN'}},required:['title','owner','dueDate','done']}},issues:{type:'ARRAY',items:{type:'STRING'}},staffNotes:{type:'ARRAY',items:{type:'OBJECT',properties:{staffName:{type:'STRING'},text:{type:'STRING'}},required:['staffName','text']}}},required:['summary','decisions','actions','issues','staffNotes']};
 async function generateMeetingMinutes(rawMemo,title,date){if(state.ai.mode!=='geminiDirect'||!getGeminiApiKey())throw Error('Gemini直接接続を設定してください');return await callGeminiDirect({schema:AI_MEETING_MINUTES_SCHEMA,input:`WORKNOTEのMTGメモを正式な議事録へ整理してください。殴り書きの意味を勝手に補完しすぎず、書かれている内容だけを構造化してください。決定事項と検討中を混同しないでください。担当者や期限が不明なら空文字にしてください。staffNotesには登録スタッフ名と明確に結びつく内容だけを入れてください。\n日付:${date}\nタイトル:${title}\n登録スタッフ:${JSON.stringify(activeStaffMembers().map(x=>x.name))}\n元メモ:${rawMemo}`})}
@@ -413,6 +437,7 @@ function startApp(){
   $('#splash')?.classList.add('hidden');
   $('#app')?.classList.remove('hidden');
   render();
+  try{exportRivalPlusBridge()}catch(error){console.warn('RIVAL+ bridge export failed:',error)}
   checkTaskNotifications();
   const params=new URLSearchParams(location.search);
   if(params.get('action')==='quick-note')openQuickNote();if(params.get('action')==='daily-report'){const date=params.get('date')||isoDate(new Date());const existing=state.notes.find(n=>n.type==='dailyReport'&&n.date===date);openQuickNote(existing||null);setTimeout(()=>{if(!existing&&$('#noteType')){$('#noteType').value='dailyReport';$('#noteDate').value=date;$('#noteType').dispatchEvent(new Event('change'))}},50)}

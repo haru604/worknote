@@ -1,4 +1,4 @@
-# WORKNOTE v26
+# WORKNOTE v26.1
 
 - 通常メモ / 業務連絡 / スタッフメモで複数スタッフを同時選択
 - 1つのメモを複数スタッフの履歴へ紐付け
@@ -9,3 +9,8 @@
 - 日報・MTGの既存自動保存も維持
 - History APIでAndroid戻るボタンを主要画面の一つ前へ連動
 - メモ編集 → メモ閲覧 → メモ一覧 → 前画面の順で戻れる構成
+
+
+## RIVAL+連携
+- 自分の+1Collection日別実績・月間累計・シフト出勤日数を `worknote_rivalplus_bridge_v1` に自動共有
+- 同一 haru604.github.io オリジン上のRIVAL+から読み取り可能
