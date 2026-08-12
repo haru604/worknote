@@ -131,3 +131,19 @@
 
 /* v27 WORKNOTE連携完成形 */
 .monthly-goal-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.monthly-goal-item{display:grid;gap:5px;background:#f7f9fc;border-radius:12px;padding:10px}.monthly-goal-item span{font-size:11px;color:var(--muted);font-weight:800}.monthly-goal-item input{width:100%;border:1px solid #ccd7e2;border-radius:9px;padding:10px;font-size:15px}.monthly-goal-save{width:100%;margin-top:10px}.goal-progress{height:6px;background:#e7eef5;border-radius:999px;overflow:hidden;margin-top:8px}.goal-progress i{display:block;height:100%;background:currentColor;border-radius:999px}.performance-summary-card small{display:block;margin-top:5px;color:var(--muted);font-size:10px}.local-insight-card{display:grid;grid-template-columns:32px 1fr;gap:10px;align-items:start}.local-insight-icon{font-size:22px}.local-insight-card strong{font-size:13px}.local-insight-card p{margin:4px 0 0;font-size:11px;line-height:1.55;color:var(--muted)}.feedback-block.goal-eval{border-left:4px solid #e59d14}.feedback-block.action{border-left:4px solid #3182ce}.feedback-block.action ol{margin:8px 0 0;padding-left:21px}.feedback-block.action li{margin:7px 0;line-height:1.55}.tomorrow-priority-btn{width:100%;margin:10px 0}@media(max-width:390px){.monthly-goal-grid{grid-template-columns:1fr}}
+
+
+/* v28 気づき詳細・休日タスク */
+.local-insight-card.clickable{width:100%;border:0;text-align:left;grid-template-columns:32px 1fr auto}
+.insight-arrow{align-self:center;font-size:22px;color:var(--muted)}
+.performance-summary-card.clickable{border:0;text-align:left;width:100%;cursor:pointer}
+.metric-hero{margin:14px 0;background:linear-gradient(135deg,#0f3558,#1763a5);color:#fff;border-radius:20px;padding:20px}
+.metric-hero span,.metric-hero small{display:block;color:#d8e7f4;font-size:12px}
+.metric-hero strong{display:block;font-size:28px;margin:7px 0}
+.metric-detail-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.metric-detail-grid .card{margin:0}
+.metric-detail-grid span{display:block;font-size:11px;color:var(--muted);font-weight:800}
+.metric-detail-grid strong{display:block;font-size:19px;margin-top:5px}
+.metric-detail-progress{height:10px;background:#e7eef5;border-radius:999px;overflow:hidden}
+.metric-detail-progress i{display:block;height:100%;background:#2f80ed;border-radius:999px}
+.metric-history-row{width:100%;display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;border:0;text-align:left}

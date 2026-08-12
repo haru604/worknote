@@ -1,7 +1,7 @@
 'use strict';
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const STORE='worknote_state_v1';
-const APP_VERSION='27.1.0';
+const APP_VERSION='28.0.0';
 const REPORT_DRAFT_STORE='worknote_report_drafts_v1';
 const GEMINI_KEY_STORE='worknote_gemini_api_key_v1';
 const V15_CLEANUP_STORE='worknote_v15_cleanup_done';
@@ -60,13 +60,33 @@ function toast(t,actionLabel='',action=null,duration=2200){const e=$('#toast');e
 function formatDate(d){return new Intl.DateTimeFormat('ja-JP',{month:'long',day:'numeric',weekday:'long'}).format(d)}
 function shiftByDate(date){const id=state.shifts[date];return state.shiftTypes.find(x=>x.id===id)}
 function isWorkShift(s){return s&&s.id!=='off'}
-function ensureTasksForDate(date){const shift=shiftByDate(date);if(!isWorkShift(shift))return;
- state.rules.filter(r=>r.enabled&&(r.scope==='work'||r.scope===shift.id||r.scope==='daily')).forEach(r=>{
+
+function autoRuleAppliesToDate(rule,date){
+ const shift=shiftByDate(date);
+ if(!rule||rule.enabled===false)return false;
+ if(rule.scope==='daily')return true;
+ if(rule.scope==='work')return isWorkShift(shift);
+ return !!shift&&rule.scope===shift.id
+}
+
+function ensureTasksForDate(date){
+ state.rules.filter(r=>autoRuleAppliesToDate(r,date)).forEach(r=>{
   const key=`${date}:${r.id}`;
   if(!state.tasks.some(t=>t.autoKey===key))state.tasks.push({id:uid(),title:r.title,date,done:false,createdAt:nowISO(),auto:true,autoKey:key,ruleId:r.id,timing:r.timing,carriedFrom:null});
- });save()}
-function reconcileDate(date){const shift=shiftByDate(date);const allowed=new Set();if(isWorkShift(shift))state.rules.filter(r=>r.enabled&&(r.scope==='work'||r.scope===shift.id||r.scope==='daily')).forEach(r=>allowed.add(`${date}:${r.id}`));
- state.tasks=state.tasks.filter(t=>{if(t.date!==date||!t.auto||t.done)return true;if(t.manuallyEdited)return true;return allowed.has(t.autoKey)});ensureTasksForDate(date);save()}
+ });
+ save()
+}
+function reconcileDate(date){
+ const allowed=new Set();
+ state.rules.filter(r=>autoRuleAppliesToDate(r,date)).forEach(r=>allowed.add(`${date}:${r.id}`));
+ state.tasks=state.tasks.filter(t=>{
+  if(t.date!==date||!t.auto||t.done)return true;
+  if(t.manuallyEdited)return true;
+  return allowed.has(t.autoKey)
+ });
+ ensureTasksForDate(date);
+ save()
+}
 function nextWorkDate(from){let d=new Date(from+'T12:00:00');for(let i=0;i<370;i++){d.setDate(d.getDate()+1);const k=isoDate(d);if(isWorkShift(shiftByDate(k)))return k}return null}
 function render(){ensureTasksForDate(isoDate(new Date()));$('#headerDate').textContent=formatDate(new Date());
  const titles={home:'WORKNOTE',notes:'メモ',calendar:'カレンダー',ai:'AI副店長補佐',settings:'設定'};$('#pageTitle').textContent=titles[currentView];
@@ -92,15 +112,23 @@ function homeEventHTML(e,date){
 function dailyReportForDate(date){return state.notes.find(n=>!n.archived&&n.type==='dailyReport'&&n.date===date)||null}
 function dailyGoalForDate(date){return (dailyReportForDate(date)?.reportData?.goal||'').trim()}
 function openTodayGoalEditor(date){const n=dailyReportForDate(date);if(n)return openQuickNote(n);openQuickNote(null);setTimeout(()=>{if(!$('#noteType'))return;$('#noteType').value='dailyReport';$('#noteType').dispatchEvent(new Event('change'));if($('#noteDate')){$('#noteDate').value=date;$('#noteDate').dispatchEvent(new Event('change'))}setTimeout(()=>$('#noteEditorDynamic [data-report-field="goal"]')?.focus(),40)},40)}
-function renderHome(){const date=isoDate(new Date()),tasks=state.tasks.filter(t=>t.date===date),done=tasks.filter(t=>t.done).length,notes=state.notes.filter(n=>n.date===date&&!n.archived),reports=notes.filter(n=>n.type==='dailyReport').length,shift=shiftByDate(date),upcomingEvents=homeUpcomingEvents(date),todayGoal=dailyGoalForDate(date),insights=localInsights(date);
+function renderHome(){const date=isoDate(new Date());ensureTasksForDate(date);const tasks=state.tasks.filter(t=>t.date===date),done=tasks.filter(t=>t.done).length,notes=state.notes.filter(n=>n.date===date&&!n.archived),reports=notes.filter(n=>n.type==='dailyReport').length,shift=shiftByDate(date),upcomingEvents=homeUpcomingEvents(date),todayGoal=dailyGoalForDate(date),insights=localInsights(date);
  $('#view-home').innerHTML=`<section class="hero"><div class="hero-row"><div class="hero-greeting-wrap"><h2 class="hero-greeting"><span>${greeting()}、</span><strong>${esc(state.profile.name)}さん</strong></h2><p>${formatDate(new Date())}</p></div><div class="shift-pill">${shift?`${esc(shift.name)}${shift.start?` ${shift.start}〜${shift.end}`:''}`:'シフト未登録'}</div></div><div class="stats"><div class="stat"><strong>${done}/${tasks.length}</strong><span>タスク</span></div><div class="stat"><strong>${notes.length}</strong><span>今日のメモ</span></div><div class="stat"><strong>${reports}</strong><span>日報</span></div></div></section>
  <section class="section"><div class="section-head"><h2>🎯 今日の重点</h2>${todayGoal?'<button class="link-btn" id="editTodayGoal">日報で編集</button>':''}</div><button class="card focus-card home-goal-card" id="todayGoalCard">${todayGoal?`<div class="home-goal-text">${displayMultiline(todayGoal)}</div>`:'<div class="home-goal-empty"><strong>今日の目標を入力</strong><span>朝一の日報に書いた「今日の目標」がここに表示されます</span></div>'}</button></section>
  <section class="section"><div class="section-head"><h2>📅 イベント</h2><button class="link-btn" id="openCalendarEvents">カレンダーを見る</button></div><div class="card home-events-card">${upcomingEvents.length?upcomingEvents.map(e=>homeEventHTML(e,date)).join(''):'<div class="home-events-empty">予定されているイベントはありません</div>'}</div></section>
- <section class="section"><div class="section-head"><h2>💡 AIからの気づき</h2><span class="small">端末内判定</span></div>${insights.length?insights.map(x=>`<div class="card local-insight-card"><div class="local-insight-icon">${x.icon}</div><div><strong>${esc(x.title)}</strong><p>${esc(x.text)}</p></div></div>`).join(''):'<div class="empty compact-empty">今すぐ注意する項目はありません</div>'}</section>
+ <section class="section"><div class="section-head"><h2>💡 AIからの気づき</h2><span class="small">端末内判定</span></div>${insights.length?insights.map(x=>`<button class="card local-insight-card clickable" data-insight-action="${x.action||''}" data-insight-key="${x.key||''}" data-insight-id="${x.id||''}"><div class="local-insight-icon">${x.icon}</div><div><strong>${esc(x.title)}</strong><p>${esc(x.text)}</p></div><b class="insight-arrow">›</b></button>`).join(''):'<div class="empty compact-empty">今すぐ注意する項目はありません</div>'}</section>
  <section class="section"><div class="section-head"><h2>今日のタスク</h2><button class="link-btn" id="addTaskBtn">＋追加</button></div>${tasks.length?tasks.sort((a,b)=>a.done-b.done).map(taskHTML).join(''):'<div class="empty">今日のタスクはありません</div>'}</section>
  <section class="section"><div class="section-head"><h2>業務連絡</h2><button class="link-btn" data-goto="notes">すべて見る</button></div>${notes.filter(n=>n.type==='inbox').slice(0,3).map(noteHTML).join('')||'<div class="empty">思いついたことを右下の＋からメモできます</div>'}</section>
  <section class="section"><button class="primary" id="closeDayBtn" style="width:100%">本日の業務を終了</button></section>`;
- $('#todayGoalCard').onclick=()=>openTodayGoalEditor(date);if($('#editTodayGoal'))$('#editTodayGoal').onclick=e=>{e.stopPropagation();openTodayGoalEditor(date)};$('#addTaskBtn').onclick=()=>openTaskModal(date);$('#closeDayBtn').onclick=()=>openCloseDay(date);if($('#openCalendarEvents'))$('#openCalendarEvents').onclick=()=>switchView('calendar');$$('[data-home-event]').forEach(b=>b.onclick=()=>{const e=state.events.find(x=>x.id===b.dataset.homeEvent);if(e){const today=isoDate(new Date()),start=eventStartDate(e),end=eventEndDate(e);selectedDate=start<=today&&today<=end?today:start;calCursor=new Date(selectedDate+'T12:00:00');switchView('calendar')}});$$('[data-goto]').forEach(x=>x.onclick=()=>switchView(x.dataset.goto));bindTaskButtons();bindNoteMenus();}
+ $('#todayGoalCard').onclick=()=>openTodayGoalEditor(date);if($('#editTodayGoal'))$('#editTodayGoal').onclick=e=>{e.stopPropagation();openTodayGoalEditor(date)};$('#addTaskBtn').onclick=()=>openTaskModal(date);$('#closeDayBtn').onclick=()=>openCloseDay(date);if($('#openCalendarEvents'))$('#openCalendarEvents').onclick=()=>switchView('calendar');$$('[data-home-event]').forEach(b=>b.onclick=()=>{const e=state.events.find(x=>x.id===b.dataset.homeEvent);if(e){const today=isoDate(new Date()),start=eventStartDate(e),end=eventEndDate(e);selectedDate=start<=today&&today<=end?today:start;calCursor=new Date(selectedDate+'T12:00:00');switchView('calendar')}});$$('[data-goto]').forEach(x=>x.onclick=()=>switchView(x.dataset.goto));bindTaskButtons();bindNoteMenus();
+$$('[data-insight-action]').forEach(b=>b.onclick=()=>{
+ const action=b.dataset.insightAction;
+ if(action==='metric')openMetricProgressDetail(b.dataset.insightKey,date);
+ else if(action==='tasks')document.querySelector('[data-task]')?.scrollIntoView({behavior:'smooth',block:'center'});
+ else if(action==='staff')openStaffReport(b.dataset.insightId);
+ else if(action==='notes')switchView('notes')
+});
+}
 function greeting(){const h=new Date().getHours();return h<11?'おはようございます':h<17?'こんにちは':'こんばんは'}
 function taskHTML(t){return `<div class="card task ${t.done?'done':''}" data-task="${t.id}"><button class="check">${t.done?'✓':''}</button><div><div class="task-title">${esc(t.title)}</div><div class="task-meta">${esc(t.timing||'')}${t.priority?'・優先度 '+esc(t.priority):''} ${t.auto?'・自動':''}${t.carriedFrom?'・繰り越し':''}${t.doneAt?'・'+new Date(t.doneAt).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})+'完了':''}</div></div><button class="more-btn">…</button></div>`}
 function bindTaskButtons(){$$('[data-task]').forEach(el=>{const id=el.dataset.task;$('.check',el).onclick=()=>toggleTask(id);$('.more-btn',el).onclick=()=>openTaskMenu(id)})}
@@ -143,6 +171,28 @@ function remainingWorkDaysEstimate(date=isoDate(new Date())){
  return Math.max(1,last-d.getDate()+1)
 }
 function monthlyPaceSignals(date=isoDate(new Date())){const days=remainingWorkDaysEstimate(date);return monthlyProgressData(date).filter(x=>x.goal>0&&x.actual<x.goal).map(x=>({...x,neededPerDay:x.remain/days})).sort((a,b)=>(b.remain/b.goal)-(a.remain/a.goal))}
+
+function metricProgressDetail(key,date=isoDate(new Date())){
+ const field=PERFORMANCE_FIELDS.find(([k])=>k===key);
+ if(!field)return null;
+ const [,label]=field;
+ const goal=monthlyGoalFor(key,date),actual=monthlyActualFor(key,date),remain=Math.max(0,goal-actual),workDays=remainingWorkDaysEstimate(date),needed=workDays>0?remain/workDays:remain,rate=goal>0?Math.round(actual/goal*100):0;
+ const reports=performanceReportsForMonth(monthKey(date)).filter(n=>metricNumber(n.reportData?.metrics?.[key])!==0).sort((a,b)=>b.date.localeCompare(a.date));
+ return {key,label,goal,actual,remain,workDays,needed,rate,reports}
+}
+function metricNeedLabel(key,value){
+ if(key==='paidSupport'||key==='plusOne')return `${Math.ceil(value).toLocaleString('ja-JP')}円 / 出勤`;
+ return `${Number(value).toLocaleString('ja-JP',{maximumFractionDigits:2})} / 出勤`
+}
+function openMetricProgressDetail(key,date=isoDate(new Date())){
+ const d=metricProgressDetail(key,date);
+ if(!d)return toast('実績項目が見つかりません');
+ openModal(`<div class="viewer-head"><button class="secondary" id="backMetricDetail">‹ 実績管理</button><button class="secondary" id="closeMetricDetail">閉じる</button></div><article class="performance-dashboard metric-detail"><header class="performance-head"><span class="tag">目標進捗</span><h1>${esc(d.label)}</h1><p>${esc(monthKey(date).replace('-','年'))}月</p></header><section class="metric-hero"><span>1出勤あたり必要</span><strong>${esc(metricNeedLabel(d.key,d.needed))}</strong><small>現在の残り目標 ÷ 残り出勤日</small></section><section class="metric-detail-grid"><div class="card"><span>月目標</span><strong>${esc(performanceFormat(d.key,d.goal))}</strong></div><div class="card"><span>現在実績</span><strong>${esc(performanceFormat(d.key,d.actual))}</strong></div><div class="card"><span>残り</span><strong>${esc(performanceFormat(d.key,d.remain))}</strong></div><div class="card"><span>残り出勤日</span><strong>${d.workDays}日</strong></div></section><section class="section"><div class="section-head"><h2>達成率</h2><strong>${d.rate}%</strong></div><div class="metric-detail-progress"><i style="width:${Math.min(100,Math.max(0,d.rate))}%"></i></div></section><section class="section"><div class="section-head"><h2>直近の実績</h2></div>${d.reports.slice(0,8).map(n=>`<button class="card metric-history-row" data-metric-report="${n.id}"><span>${esc(n.date.replaceAll('-','/'))}</span><strong>${esc(performanceFormat(d.key,n.reportData?.metrics?.[d.key]||0))}</strong><b>›</b></button>`).join('')||'<div class="empty">この項目の実績はまだありません</div>'}</section></article>`,'note-viewer');
+ $('#backMetricDetail').onclick=()=>openPerformanceDashboard(monthKey(date));
+ $('#closeMetricDetail').onclick=closeModal;
+ $$('[data-metric-report]').forEach(b=>b.onclick=()=>{const n=state.notes.find(x=>x.id===b.dataset.metricReport);if(n)openReportViewer(n)})
+}
+
 function overdueTasks(date=isoDate(new Date())){
  return state.tasks.filter(t=>{
   if(t.done||!t.date||t.date>=date)return false;
@@ -152,7 +202,18 @@ function overdueTasks(date=isoDate(new Date())){
 }
 function todayOpenTasks(date=isoDate(new Date())){return state.tasks.filter(t=>!t.done&&t.date===date)}
 function staleStaffRecords(date=isoDate(new Date()),days=7){const now=new Date(date+'T12:00:00').getTime();return buildStaffReports().filter(r=>r.active&&r.latest).map(r=>({...r,staleDays:Math.floor((now-new Date(r.latest+'T12:00:00').getTime())/86400000)})).filter(r=>r.staleDays>=days).sort((a,b)=>b.staleDays-a.staleDays)}
-function localInsights(date=isoDate(new Date())){const out=[];const pace=monthlyPaceSignals(date)[0];if(pace)out.push({type:'pace',icon:'📉',title:`${pace.label} 月目標ペース`,text:`${formatPerformanceValue(pace.key,pace.actual)} / ${formatPerformanceValue(pace.key,pace.goal)}。残り${formatPerformanceValue(pace.key,pace.remain)}、出勤目安1日あたり${formatPerformanceValue(pace.key,pace.neededPerDay)}必要。`});const overdue=overdueTasks(date);if(overdue.length)out.push({type:'task',icon:'⏰',title:'期限超過タスク',text:`未完了が${overdue.length}件あります。最古は「${[...overdue].sort((a,b)=>a.date.localeCompare(b.date))[0].title}」。`});const stale=staleStaffRecords(date)[0];if(stale)out.push({type:'staff',icon:'👤',title:`${stale.name}さん`,text:`最終育成記録から${stale.staleDays}日。次回確認のタイミングです。`});const meetingPending=state.notes.filter(n=>!n.archived&&n.type==='meeting').reduce((c,n)=>c+(n.meetingData?.aiMinutes?.actions||[]).filter(a=>!a.done&&!a.applied).length,0);if(meetingPending)out.push({type:'meeting',icon:'📋',title:'MTG未反映アクション',text:`議事録に未反映のアクションが${meetingPending}件あります。`});return out.slice(0,3)}
+function localInsights(date=isoDate(new Date())){
+ const out=[];
+ const pace=monthlyPaceSignals(date)[0];
+ if(pace)out.push({type:'pace',icon:'📉',title:`${pace.label} 月目標ペース`,text:`${formatPerformanceValue(pace.key,pace.actual)} / ${formatPerformanceValue(pace.key,pace.goal)}。残り${formatPerformanceValue(pace.key,pace.remain)}、出勤目安1日あたり${formatPerformanceValue(pace.key,pace.neededPerDay)}必要。`,action:'metric',key:pace.key});
+ const overdue=overdueTasks(date);
+ if(overdue.length)out.push({type:'task',icon:'⏰',title:'期限超過タスク',text:`未完了が${overdue.length}件あります。最古は「${[...overdue].sort((a,b)=>a.date.localeCompare(b.date))[0].title}」。`,action:'tasks'});
+ const stale=staleStaffRecords(date)[0];
+ if(stale)out.push({type:'staff',icon:'👤',title:`${stale.name}さん`,text:`最終育成記録から${stale.staleDays}日。次回確認のタイミングです。`,action:'staff',id:stale.id});
+ const meetingPending=state.notes.filter(n=>!n.archived&&n.type==='meeting').reduce((c,n)=>c+(n.meetingData?.aiMinutes?.actions||[]).filter(a=>!a.done&&!a.applied).length,0);
+ if(meetingPending)out.push({type:'meeting',icon:'📋',title:'MTG未反映アクション',text:`議事録に未反映のアクションが${meetingPending}件あります。`,action:'notes'});
+ return out.slice(0,3)
+}
 function compactWorknoteContext(date=isoDate(new Date())){const goals=monthlyProgressData(date).filter(x=>x.goal>0).map(x=>({label:x.label,goal:x.goal,actual:x.actual,remain:x.remain,rate:x.rate}));return{date,todayGoal:dailyGoalForDate(date),todayTasks:todayOpenTasks(date).map(t=>t.title),overdueTasks:overdueTasks(date).map(t=>({title:t.title,date:t.date})),monthlyGoals:goals,upcoming:homeUpcomingEvents(date).slice(0,5).map(e=>({title:e.title,start:e.start,end:e.end})),staffFollowup:staleStaffRecords(date).slice(0,3).map(r=>({name:r.name,staleDays:r.staleDays}))}}
 function tomorrowISO(date){const d=new Date(date+'T12:00:00');d.setDate(d.getDate()+1);return isoDate(d)}
 function upsertTomorrowGoal(fromDate,text){const date=tomorrowISO(fromDate),goal=String(text||'').trim();if(!goal)return false;let n=dailyReportForDate(date);if(n){n.reportData=n.reportData||{};n.reportData.goal=goal;n.text=reportText(n.reportData);n.updatedAt=nowISO()}else{const data={goal,metrics:{},next:['','','']};n={id:uid(),title:reportTitleForDate(date),text:reportText(data),type:'dailyReport',date,reportData:data,staff:'',staffId:'',staffIds:[],pinned:false,archived:false,createdAt:nowISO(),updatedAt:nowISO()};state.notes.push(n)}save();return true}
@@ -329,14 +390,14 @@ function openPerformanceDashboard(targetMonth=null){
  const m=typeof performanceMonthCursor==='string'?performanceMonthCursor:monthKeyFromDate(performanceMonthCursor);
  performanceMonthCursor=m;
  const reports=performanceReportsForMonth(m),totals=aggregatePerformance(reports),goals=loadMonthlyGoals()[m]||{};
- openModal(`<div class="viewer-head"><button class="secondary" id="backAIFromPerformance">‹ AI</button><button class="secondary" id="closePerformance">閉じる</button></div><article class="performance-dashboard"><header class="performance-head"><span class="tag">実績管理</span><h1>月間実績</h1><div class="performance-month-nav"><button class="secondary" id="prevPerformanceMonth">‹</button><strong>${esc(m.replace('-','年'))}月</strong><button class="secondary" id="nextPerformanceMonth">›</button></div></header><section class="section"><div class="section-head"><h2>今月の目標</h2><span class="small">13項目</span></div><div class="monthly-goal-grid">${PERFORMANCE_FIELDS.map(([k,l])=>`<label class="monthly-goal-item"><span>${esc(l)}</span><input type="number" step="any" inputmode="decimal" data-month-goal="${k}" value="${goals[k]??''}" placeholder="0"></label>`).join('')}</div><button class="primary monthly-goal-save" id="saveMonthlyGoals">目標を保存</button></section><section class="section"><div class="section-head"><h2>進捗</h2><span class="small">${reports.length}日分</span></div><div class="performance-summary-grid">${PERFORMANCE_FIELDS.map(([k,l])=>{const goal=Number(goals[k]||0),actual=Number(totals[k]||0),rate=goal>0?Math.round(actual/goal*100):0;return `<div class="performance-summary-card"><span>${esc(l)}</span><strong>${esc(performanceFormat(k,actual))}${goal>0?` / ${esc(performanceFormat(k,goal))}`:''}</strong>${goal>0?`<div class="goal-progress"><i style="width:${Math.min(100,Math.max(0,rate))}%"></i></div><small>${rate}%・残り ${esc(performanceFormat(k,Math.max(0,goal-actual)))}</small>`:''}</div>`}).join('')}</div></section><section class="section"><div class="section-head"><h2>日別実績</h2></div>${reports.map(n=>`<button class="card performance-day-row" data-performance-day="${n.date}"><div><strong>${esc(n.date.replaceAll('-','/'))}</strong><p>${esc(performanceCompactSummary(n.reportData?.metrics||{}))}</p></div><span>›</span></button>`).join('')||'<div class="empty">この月の日報実績はまだありません</div>'}</section></article>`,'note-viewer');
+ openModal(`<div class="viewer-head"><button class="secondary" id="backAIFromPerformance">‹ AI</button><button class="secondary" id="closePerformance">閉じる</button></div><article class="performance-dashboard"><header class="performance-head"><span class="tag">実績管理</span><h1>月間実績</h1><div class="performance-month-nav"><button class="secondary" id="prevPerformanceMonth">‹</button><strong>${esc(m.replace('-','年'))}月</strong><button class="secondary" id="nextPerformanceMonth">›</button></div></header><section class="section"><div class="section-head"><h2>今月の目標</h2><span class="small">13項目</span></div><div class="monthly-goal-grid">${PERFORMANCE_FIELDS.map(([k,l])=>`<label class="monthly-goal-item"><span>${esc(l)}</span><input type="number" step="any" inputmode="decimal" data-month-goal="${k}" value="${goals[k]??''}" placeholder="0"></label>`).join('')}</div><button class="primary monthly-goal-save" id="saveMonthlyGoals">目標を保存</button></section><section class="section"><div class="section-head"><h2>進捗</h2><span class="small">${reports.length}日分</span></div><div class="performance-summary-grid">${PERFORMANCE_FIELDS.map(([k,l])=>{const goal=Number(goals[k]||0),actual=Number(totals[k]||0),rate=goal>0?Math.round(actual/goal*100):0;return `<button class="performance-summary-card clickable" data-metric-detail="${k}"><span>${esc(l)}</span><strong>${esc(performanceFormat(k,actual))}${goal>0?` / ${esc(performanceFormat(k,goal))}`:''}</strong>${goal>0?`<div class="goal-progress"><i style="width:${Math.min(100,Math.max(0,rate))}%"></i></div><small>${rate}%・残り ${esc(performanceFormat(k,Math.max(0,goal-actual)))}</small>`:''}</button>`}).join('')}</div></section><section class="section"><div class="section-head"><h2>日別実績</h2></div>${reports.map(n=>`<button class="card performance-day-row" data-performance-day="${n.date}"><div><strong>${esc(n.date.replaceAll('-','/'))}</strong><p>${esc(performanceCompactSummary(n.reportData?.metrics||{}))}</p></div><span>›</span></button>`).join('')||'<div class="empty">この月の日報実績はまだありません</div>'}</section></article>`,'note-viewer');
  $('#backAIFromPerformance').onclick=()=>{if(history.state?.worknoteRoute?.type==='performance')history.back();else{closeModal();switchView('ai')}};
  $('#closePerformance').onclick=closeModal;
  $('#prevPerformanceMonth').onclick=()=>{const d=new Date(m+'-01T12:00:00');d.setMonth(d.getMonth()-1);performanceMonthCursor=monthKeyFromDate(d);openPerformanceDashboard(performanceMonthCursor)};
  $('#nextPerformanceMonth').onclick=()=>{const d=new Date(m+'-01T12:00:00');d.setMonth(d.getMonth()+1);performanceMonthCursor=monthKeyFromDate(d);openPerformanceDashboard(performanceMonthCursor)};
  $('#saveMonthlyGoals').onclick=()=>{const all=loadMonthlyGoals();all[m]=all[m]||{};$$('[data-month-goal]').forEach(x=>all[m][x.dataset.monthGoal]=metricNumber(x.value));saveMonthlyGoals(all);toast('今月の目標を保存しました');openPerformanceDashboard(m)};
  $$('[data-performance-day]').forEach(b=>b.onclick=()=>openPerformanceDay(b.dataset.performanceDay,m))
-}
+$$('[data-metric-detail]').forEach(b=>b.onclick=()=>openMetricProgressDetail(b.dataset.metricDetail,`${m}-01`));}
 function openPerformanceDay(date,selectedMonth=null){
  const m=selectedMonth||monthKeyFromDate(date);
  const reports=state.notes.filter(n=>!n.archived&&n.type==='dailyReport'&&n.date===date),totals=aggregatePerformance(reports);
@@ -511,7 +572,7 @@ window.addEventListener('load',()=>{
 let worknoteRestoringHistory=false;
 function worknotePushRoute(route){if(worknoteRestoringHistory)return;try{history.pushState({worknoteRoute:route},'',location.href)}catch{}}
 function worknoteHideModal(){const modal=$('#modal');if(modal){modal.classList.add('hidden');modal.classList.remove('note-editor-modal','note-viewer-modal');if($('#modalContent'))$('#modalContent').innerHTML=''}}
-function worknoteRestoreRoute(route){worknoteRestoringHistory=true;worknoteHideModal();try{if(!route||route.type==='view'){currentView=route?.view||'home';render();window.scrollTo(0,0)}else if(route.type==='noteViewer')openNoteViewer(route.id);else if(route.type==='reportViewer'){const n=state.notes.find(x=>x.id===route.id);if(n)openReportViewer(n)}else if(route.type==='meetingViewer'){const n=state.notes.find(x=>x.id===route.id);if(n)openMeetingViewer(n)}else if(route.type==='noteEdit'){const n=route.id?state.notes.find(x=>x.id===route.id):null;openQuickNote(n||null);if(route.noteType&&$('#noteType')){$('#noteType').value=route.noteType;$('#noteType').dispatchEvent(new Event('change'))}}else if(route.type==='staffDirectory')openStaffDirectory();else if(route.type==='staffReport')openStaffReport(route.id);else if(route.type==='performance')openPerformanceDashboard(route.month||null);else if(route.type==='performanceDay')openPerformanceDay(route.date,route.month||null);else{currentView='home';render()}}finally{setTimeout(()=>worknoteRestoringHistory=false,0)}}
+function worknoteRestoreRoute(route){worknoteRestoringHistory=true;worknoteHideModal();try{if(!route||route.type==='view'){currentView=route?.view||'home';render();window.scrollTo(0,0)}else if(route.type==='noteViewer')openNoteViewer(route.id);else if(route.type==='reportViewer'){const n=state.notes.find(x=>x.id===route.id);if(n)openReportViewer(n)}else if(route.type==='meetingViewer'){const n=state.notes.find(x=>x.id===route.id);if(n)openMeetingViewer(n)}else if(route.type==='noteEdit'){const n=route.id?state.notes.find(x=>x.id===route.id):null;openQuickNote(n||null);if(route.noteType&&$('#noteType')){$('#noteType').value=route.noteType;$('#noteType').dispatchEvent(new Event('change'))}}else if(route.type==='staffDirectory')openStaffDirectory();else if(route.type==='staffReport')openStaffReport(route.id);else if(route.type==='performance')openPerformanceDashboard(route.month||null);else if(route.type==='performanceDay')openPerformanceDay(route.date,route.month||null);else if(route.type==='metricDetail')openMetricProgressDetail(route.key,route.date||isoDate(new Date()));else{currentView='home';render()}}finally{setTimeout(()=>worknoteRestoringHistory=false,0)}}
 window.addEventListener('popstate',e=>worknoteRestoreRoute(e.state?.worknoteRoute||{type:'view',view:'home'}));
 try{history.replaceState({worknoteRoute:{type:'view',view:currentView||'home'}},'',location.href)}catch{}
 const __switchView_v26=switchView;switchView=function(v){__switchView_v26(v);worknotePushRoute({type:'view',view:v})};
@@ -524,3 +585,5 @@ if(typeof openStaffDirectory==='function'){const __openStaffDirectory_v26=openSt
 if(typeof openStaffReport==='function'){const __openStaffReport_v26=openStaffReport;openStaffReport=function(id){__openStaffReport_v26(id);worknotePushRoute({type:'staffReport',id})}}
 if(typeof openPerformanceDashboard==='function'){const __openPerformanceDashboard_v26=openPerformanceDashboard;openPerformanceDashboard=function(targetMonth=null){__openPerformanceDashboard_v26(targetMonth);worknotePushRoute({type:'performance',month:typeof performanceMonthCursor==='string'?performanceMonthCursor:monthKeyFromDate(performanceMonthCursor)})}}
 if(typeof openPerformanceDay==='function'){const __openPerformanceDay_v26=openPerformanceDay;openPerformanceDay=function(date,selectedMonth=null){__openPerformanceDay_v26(date,selectedMonth);worknotePushRoute({type:'performanceDay',date,month:selectedMonth||monthKeyFromDate(date)})}}
+
+if(typeof openMetricProgressDetail==='function'){const __openMetricProgressDetail_v28=openMetricProgressDetail;openMetricProgressDetail=function(key,date=isoDate(new Date())){__openMetricProgressDetail_v28(key,date);worknotePushRoute({type:'metricDetail',key,date})}}
