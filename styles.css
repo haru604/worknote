@@ -324,3 +324,46 @@
 }
 .sellnavi-refresh-mini:active{filter:brightness(.94)}
 .sellnavi-sync-card summary .sellnavi-refresh-mini{pointer-events:auto}
+
+
+/* v30.2 休日モード + 日報閲覧セルナビ更新 */
+.holiday-mode-banner{
+  margin:10px 0 12px;
+  padding:12px 14px;
+  border-radius:14px;
+  background:#f7f8fb;
+  border:1px solid #e1e5eb;
+  color:#17263a;
+}
+.holiday-mode-banner span{
+  display:inline-block;
+  font-size:10px;
+  font-weight:800;
+  padding:3px 7px;
+  border-radius:999px;
+  background:#e9edf3;
+  color:#5e6c7c;
+  margin-right:6px;
+}
+.holiday-mode-banner strong{font-size:12px;color:#17263a}
+.holiday-mode-banner p{margin:7px 0 0;font-size:12px;line-height:1.55;color:#68798c}
+.holiday-sellnavi-note,.holiday-view-note{
+  background:#f8f9fb!important;
+  border-color:#e3e7ed!important;
+  color:#5e6c7c!important;
+}
+.holiday-sellnavi-note strong,.holiday-view-note h3{color:#46576a!important}
+.holiday-sellnavi-note p,.holiday-view-note p{color:#758496!important}
+.holiday-feedback{
+  background:#f7f8fb!important;
+  border-left:4px solid #9aa8b7!important;
+}
+.holiday-learning{
+  border-left:4px solid #6f7f91!important;
+}
+.sellnavi-snapshot-view h3{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+}
