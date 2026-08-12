@@ -176,3 +176,14 @@
 .weekly-mentor-review h3{margin:0 0 8px;font-size:14px}
 .weekly-mentor-review p,.weekly-mentor-review li{font-size:13px;line-height:1.7}
 .weekly-focus{border-left:4px solid #2676d2}
+
+/* v29.1 mentor reliability */
+.mentor-ai-error{margin:12px 0;padding:14px;border-radius:14px;background:#fff2d8;border:1px solid #efd39a}
+.mentor-ai-error strong{display:block;margin-bottom:5px}
+.mentor-ai-error p{margin:0 0 10px;font-size:12px;line-height:1.55}
+.mentor-ai-error .primary{width:100%}
+.mentor-reanalyze-top{width:100%;margin:10px 0 2px}
+.ai-error-banner{display:flex;gap:10px;align-items:center;justify-content:space-between}
+.ai-error-banner span{flex:1}
+.weekly-skill{background:#f7f9fc;border-radius:12px;padding:12px;margin-top:9px}
+.weekly-skill p{margin:6px 0!important}
