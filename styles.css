@@ -147,3 +147,32 @@
 .metric-detail-progress{height:10px;background:#e7eef5;border-radius:999px;overflow:hidden}
 .metric-detail-progress i{display:block;height:100%;background:#2f80ed;border-radius:999px}
 .metric-history-row{width:100%;display:grid;grid-template-columns:1fr auto auto;gap:10px;align-items:center;border:0;text-align:left}
+
+
+/* v29 AI副店長メンター */
+.mentor-feedback .feedback-block{margin-top:12px}
+.mentor-prev{border-left:4px solid #7b61ff}
+.mentor-role{border-left:4px solid #2676d2}
+.mentor-ratings{border-left:4px solid #1f9d6a}
+.mentor-rating-list{display:grid;gap:8px;margin-top:8px}
+.mentor-rating-list>div{background:#f7f9fc;border-radius:12px;padding:10px}
+.mentor-rating-list>div>div{display:flex;gap:8px;align-items:center}
+.mentor-rating-list p{margin:5px 0 0!important;font-size:12px!important}
+.mentor-grade{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;font-weight:900;background:#e8eef5}
+.grade-◎{background:#dff5e9}.grade-○{background:#e4f0ff}.grade-△{background:#fff1cc}.grade-×{background:#ffe3e3}.grade-？{background:#edf0f4}
+.mentor-diagnosis article,.mentor-training article{background:#f7f9fc;border-radius:14px;padding:12px;margin-top:9px}
+.mentor-issue-head{display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.mentor-issue-head b{font-size:11px;background:#e7edf5;padding:4px 7px;border-radius:999px}
+.mentor-issue-head em{font-style:normal;font-size:11px;margin-left:auto;color:var(--muted)}
+.mentor-diagnosis article p,.mentor-training article p{font-size:12px!important;margin:7px 0!important}
+.mentor-training-meta{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.mentor-training-meta span{font-size:11px;background:#e8eef5;padding:5px 8px;border-radius:999px}
+.mentor-training-task{width:100%;margin-top:8px}
+.mentor-comment{border-left:4px solid #152d46}
+.mentor-weekly-card{width:100%;border:0;text-align:left}
+.weekly-mentor-review{padding-bottom:12px}
+.weekly-mentor-review header{margin-bottom:16px}
+.weekly-mentor-review section{background:#fff;border-radius:14px;padding:13px;margin:10px 0}
+.weekly-mentor-review h3{margin:0 0 8px;font-size:14px}
+.weekly-mentor-review p,.weekly-mentor-review li{font-size:13px;line-height:1.7}
+.weekly-focus{border-left:4px solid #2676d2}
