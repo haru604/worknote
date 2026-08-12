@@ -279,3 +279,48 @@
 .grade-◎,.grade-○,.grade-△,.grade-×,.grade-？{
   color:#17263a !important;
 }
+
+
+/* v30 セルナビ連携・店舗アクション・継続記憶 */
+.store-action-field textarea{min-height:150px}
+.sellnavi-sync-card{margin:10px 0;padding:12px 14px;background:#f5f8fc;border:1px solid #dce6f0;border-radius:14px;color:#17263a}
+.sellnavi-sync-card summary{display:flex;justify-content:space-between;gap:10px;align-items:center;cursor:pointer;font-weight:800}
+.sellnavi-sync-card summary small{font-size:11px;color:#68798c;font-weight:500}
+.sellnavi-sync-card.not-synced{display:block}
+.sellnavi-sync-card.not-synced strong{color:#17263a}
+.sellnavi-sync-card.not-synced p{color:#68798c;margin:5px 0 0;font-size:12px}
+.sellnavi-sync-list{display:grid;gap:7px;margin:12px 0}
+.sellnavi-sync-list>div{display:grid;grid-template-columns:1fr auto;gap:3px 10px;padding:8px 0;border-bottom:1px solid #e3eaf1}
+.sellnavi-sync-list span,.sellnavi-sync-list strong{color:#17263a}
+.sellnavi-sync-list small{grid-column:2;color:#68798c;text-align:right}
+.store-action-view{border-left:4px solid #2f80ed}
+.sellnavi-snapshot-view{border-left:4px solid #1f9d6a}
+.mentor-memory-captured{border-left:4px solid #7b61ff}
+.mentor-memory-captured small{color:#68798c}
+.mentor-memory-list{display:grid;gap:10px}
+.mentor-memory-list article{background:#fff;border:1px solid #e4eaf0;border-radius:14px;padding:13px;color:#17263a}
+.mentor-memory-list article>div{display:flex;justify-content:space-between;gap:8px;align-items:center}
+.mentor-memory-list strong{display:block;margin:8px 0;color:#17263a}
+.mentor-memory-list p{font-size:11px;color:#68798c}
+.mentor-memory-list button{width:100%;margin-top:8px}
+.mentor-memory-card{width:100%;border:0;text-align:left}
+
+
+/* v30.1 セルナビ小型再同期ボタン */
+.sellnavi-sync-head{display:flex;justify-content:space-between;gap:10px;align-items:center}
+.sellnavi-sync-head p{margin:4px 0 0}
+.sellnavi-summary-right{display:flex;align-items:center;gap:7px}
+.sellnavi-refresh-mini{
+  border:1px solid #d5dee8;
+  background:#edf2f7;
+  color:#5e6f82;
+  border-radius:999px;
+  padding:4px 8px;
+  font-size:10px;
+  font-weight:700;
+  line-height:1.2;
+  cursor:pointer;
+  flex-shrink:0;
+}
+.sellnavi-refresh-mini:active{filter:brightness(.94)}
+.sellnavi-sync-card summary .sellnavi-refresh-mini{pointer-events:auto}
