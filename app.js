@@ -1,7 +1,7 @@
 'use strict';
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const STORE='worknote_state_v1';
-const APP_VERSION='30.2.0';
+const APP_VERSION='31.0.0';
 const REPORT_DRAFT_STORE='worknote_report_drafts_v1';
 const GEMINI_KEY_STORE='worknote_gemini_api_key_v1';
 const V15_CLEANUP_STORE='worknote_v15_cleanup_done';
@@ -28,6 +28,10 @@ function simpleDraftKey(existing,type,date){return `worknote_simple_draft_${exis
 function loadSimpleDraft(existing,type,date){try{return JSON.parse(localStorage.getItem(simpleDraftKey(existing,type,date))||'null')}catch{return null}}
 function saveSimpleDraft(existing,type,date){const ed=$('#quickRichText');if(!ed)return;const richHTML=sanitizeRichHTML(ed.innerHTML),staffIds=selectedStaffIdsFromEditor();localStorage.setItem(simpleDraftKey(existing,type,date),JSON.stringify({richHTML,text:htmlToPlainText(richHTML),staffIds,savedAt:nowISO()}));const x=$('#simpleDraftStatus');if(x)x.textContent='✓ 保存済み'}
 function clearSimpleDraft(existing,type,date){localStorage.removeItem(simpleDraftKey(existing,type,date))}
+
+let plainDraftTimer=null;
+function savePlainDraft(existing,type,date){const ed=$('#quickText');if(!ed)return;const staffIds=selectedStaffIdsFromEditor();localStorage.setItem(simpleDraftKey(existing,type,date),JSON.stringify({text:ed.value,staffIds,savedAt:nowISO()}));const x=$('#simpleDraftStatus');if(x)x.textContent='✓ 保存済み'}
+function queuePlainDraft(){const x=$('#simpleDraftStatus');if(x)x.textContent='保存中…';clearTimeout(plainDraftTimer);plainDraftTimer=setTimeout(()=>{const type=$('#noteType')?.value,date=$('#noteDate')?.value;if(type&&date)savePlainDraft(window.__worknoteEditingNote||null,type,date)},700)}
 function queueSimpleDraft(){const x=$('#simpleDraftStatus');if(x)x.textContent='保存中…';clearTimeout(simpleDraftTimer);simpleDraftTimer=setTimeout(()=>{const type=$('#noteType')?.value,date=$('#noteDate')?.value;if(type&&date)saveSimpleDraft(window.__worknoteEditingNote||null,type,date)},800)}
 
 const DEFAULT={
@@ -47,7 +51,7 @@ let state=load();
 state.settings=Object.assign({},clone(DEFAULT.settings),state.settings||{});
 state.trash=state.trash||[];
 state.staff=Object.assign({members:[],goals:{},followups:[]},state.staff||{});state.staff.members=state.staff.members||[];state.staff.goals=state.staff.goals||{};state.staff.followups=state.staff.followups||[];
-state.ai=Object.assign({},clone(DEFAULT.ai),state.ai||{});state.ai.chat=state.ai.chat||[];state.ai.rules=state.ai.rules||[];state.ai.staffInsights=state.ai.staffInsights||{};state.ai.mentor=Object.assign({issues:{},weeklyReviews:[],lastWeeklyAt:'',memories:[]},state.ai.mentor||{});state.ai.mentor.issues=state.ai.mentor.issues||{};state.ai.mentor.weeklyReviews=state.ai.mentor.weeklyReviews||[];state.ai.mentor.memories=Array.isArray(state.ai.mentor.memories)?state.ai.mentor.memories:[];delete state.ai.inbox;delete state.ai.weekly;delete state.ai.lastDigestKey;delete state.ai.lastRun;delete state.ai.automationLevel;delete state.ai.enabled;if(state.ai.mode==='openai'||state.ai.mode==='gemini')state.ai.mode='geminiDirect';state.ai.model=state.ai.model||DEFAULT_GEMINI_MODEL;
+state.ai=Object.assign({},clone(DEFAULT.ai),state.ai||{});state.ai.chat=state.ai.chat||[];state.ai.rules=state.ai.rules||[];state.ai.staffInsights=state.ai.staffInsights||{};state.ai.mentor=Object.assign({issues:{},weeklyReviews:[],monthlyReports:[],lastWeeklyAt:'',memories:[],roleupTasks:[]},state.ai.mentor||{});state.ai.mentor.issues=state.ai.mentor.issues||{};state.ai.mentor.weeklyReviews=state.ai.mentor.weeklyReviews||[];state.ai.mentor.monthlyReports=Array.isArray(state.ai.mentor.monthlyReports)?state.ai.mentor.monthlyReports:[];state.ai.mentor.roleupTasks=Array.isArray(state.ai.mentor.roleupTasks)?state.ai.mentor.roleupTasks:[];state.ai.mentor.memories=Array.isArray(state.ai.mentor.memories)?state.ai.mentor.memories:[];delete state.ai.inbox;delete state.ai.weekly;delete state.ai.lastDigestKey;delete state.ai.lastRun;delete state.ai.automationLevel;delete state.ai.enabled;if(state.ai.mode==='openai'||state.ai.mode==='gemini')state.ai.mode='geminiDirect';state.ai.model=state.ai.model||DEFAULT_GEMINI_MODEL;
 state.notes.forEach(n=>{if(n.type==='fixed'||n.type==='report')n.type='normal'});
 if(!localStorage.getItem(V15_CLEANUP_STORE)){const today=isoDate(new Date());state.tasks=state.tasks.filter(t=>!t.date||t.date>=today);localStorage.setItem(V15_CLEANUP_STORE,'1')}
 migrateStaffMaster();save();
@@ -141,12 +145,22 @@ function noteDisplayTitle(n){if(n.title)return n.title;const first=(n.text||'').
 function noteHTML(n){const inboxTag=n.type==='inbox'?`<span class="tag ${n.confirmed?'confirmed':'unconfirmed'}">${n.confirmed?'確認済み':'未確認'}</span>`:'';const md=n.type==='meeting'?(n.meetingData||{}):null,ai=md?.aiMinutes||null;const mtgMeta=ai?`<span class="tag">決定 ${(ai.decisions||[]).length}</span><span class="tag">タスク ${(ai.actions||[]).length}</span><span class="tag">未完 ${(ai.actions||[]).filter(x=>!x.done).length}</span>`:'';const dateText=(n.type==='dailyReport'||n.type==='meeting')?esc((n.date||'').replaceAll('-','/')):new Date(n.createdAt).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'});return `<div class="card note-card" data-note="${n.id}"><button class="more-btn note-menu">…</button><h3>${n.pinned?'<span class="pin">★</span> ':''}${esc(noteDisplayTitle(n))}</h3><div class="note-meta"><span>${dateText}</span><span class="tag">${labelType(n.type)}</span>${inboxTag}${mtgMeta}${n.staff?`<span class="tag">${esc(n.staff)}</span>`:''}</div></div>`}
 function labelType(t){return({inbox:'業務連絡',normal:'通常',staff:'スタッフ',dailyReport:'日報',meeting:'MTG'}[t]||'メモ')}
 function renderNotes(){const filter=renderNotes.filter||'all',q=renderNotes.q||'';let notes=state.notes.filter(n=>!n.archived);if(filter!=='all')notes=notes.filter(n=>n.type===filter);if(q)notes=notes.filter(n=>(n.text||'').toLowerCase().includes(q.toLowerCase())||(n.title||'').toLowerCase().includes(q.toLowerCase())||(n.staff||'').includes(q));const sortKey=n=>(n.type==='dailyReport'||n.type==='meeting')?`${n.date||'0000-00-00'}T23:59:59`:(n.updatedAt||n.createdAt||'');notes.sort((a,b)=>sortKey(b).localeCompare(sortKey(a)));$('#view-notes').innerHTML=`<div class="search-box"><input id="noteSearch" placeholder="メモを検索" value="${esc(q)}"></div><div class="chip-row">${[['all','すべて'],['inbox','業務連絡'],['normal','通常'],['dailyReport','日報'],['meeting','MTG'],['staff','スタッフ']].map(([k,v])=>`<button class="chip ${filter===k?'active':''}" data-filter="${k}">${v}</button>`).join('')}</div><section class="section">${notes.map(noteHTML).join('')||'<div class="empty">該当するメモはありません</div>'}</section>`;$('#noteSearch').oninput=e=>{renderNotes.q=e.target.value;renderNotes()};$$('[data-filter]').forEach(b=>b.onclick=()=>{renderNotes.filter=b.dataset.filter;renderNotes()});bindNoteMenus()}
-function bindNoteMenus(){$$('[data-note]').forEach(el=>{const id=el.dataset.note;el.onclick=e=>{if(e.target.closest('.note-menu'))return;openNoteViewer(id)};$('.note-menu',el).onclick=e=>{e.stopPropagation();openNoteMenu(id)}})}
+function bindNoteMenus(){
+ $$('[data-note]').forEach(el=>{const id=el.dataset.note,menu=$('.note-menu',el);el.onclick=e=>{if(e.target.closest('.note-menu'))return;openNoteViewer(id)};if(menu)menu.onclick=e=>{e.stopPropagation();openNoteMenu(id)}})
+}
 function deleteNote(id){const index=state.notes.findIndex(x=>x.id===id);if(index<0)return;const removed=state.notes.splice(index,1)[0];state.trash.push({kind:'note',item:removed,deletedAt:nowISO()});save();closeModal();render();toast('削除しました','元に戻す',()=>{const hit=state.trash.findIndex(x=>x.item?.id===id);if(hit>=0){state.notes.push(state.trash.splice(hit,1)[0].item);save();render();toast('元に戻しました')}},5000)}
 function confirmDeleteNote(id){const n=state.notes.find(x=>x.id===id);if(!n)return;openModal(`<h2>削除の確認</h2><div class="warning">「${esc(noteDisplayTitle(n))}」を削除しますか？</div><div class="btn-row"><button class="secondary" id="cancelDelete">キャンセル</button><button class="danger" id="confirmDelete">削除する</button></div>`);$('#cancelDelete').onclick=closeModal;$('#confirmDelete').onclick=()=>deleteNote(id)}
-function openNoteMenu(id){const n=state.notes.find(x=>x.id===id);if(!n)return;openModal(`<h2>メモの操作</h2><div class="list-row"><button class="secondary grow" id="viewNote">読む</button></div><div class="list-row"><button class="secondary grow" id="editNote">編集</button></div>${n.type==='inbox'?`<div class="list-row"><button class="secondary grow" id="toggleConfirmed">${n.confirmed?'未確認に戻す':'確認済みにする'}</button></div>`:''}${n.type!=='meeting'?'<div class="list-row"><button class="secondary grow" id="taskify">タスクにする</button></div>':''}<div class="list-row"><button class="danger grow" id="deleteNote">削除</button></div>`);$('#viewNote').onclick=()=>openNoteViewer(id);$('#editNote').onclick=()=>openQuickNote(n);if($('#toggleConfirmed'))$('#toggleConfirmed').onclick=()=>{n.confirmed=!n.confirmed;n.updatedAt=nowISO();save();closeModal();render();toast(n.confirmed?'確認済みにしました':'未確認に戻しました')};if($('#taskify'))$('#taskify').onclick=()=>{state.tasks.push({id:uid(),title:n.title||n.text,date:n.date||isoDate(new Date()),done:false,createdAt:nowISO(),auto:false,timing:'終日'});save();closeModal();render();toast('タスクにしました')};$('#deleteNote').onclick=()=>confirmDeleteNote(id)}
+function openNoteMenu(id){
+ const n=state.notes.find(x=>x.id===id);if(!n)return;openModal(`<h2>メモの操作</h2><div class="list-row"><button class="secondary grow" id="viewNote">読む</button></div><div class="list-row"><button class="secondary grow" id="editNote">編集</button></div>${n.type==='inbox'?`<div class="list-row"><button class="secondary grow" id="toggleConfirmed">${n.confirmed?'未確認に戻す':'確認済みにする'}</button></div>`:''}${n.type!=='meeting'?'<div class="list-row"><button class="secondary grow" id="taskify">タスクにする</button></div>':''}<div class="list-row"><button class="danger grow" id="deleteNote">削除</button></div>`);
+ const view=$('#viewNote'),edit=$('#editNote'),toggle=$('#toggleConfirmed'),task=$('#taskify'),del=$('#deleteNote');if(view)view.onclick=()=>openNoteViewer(id);if(edit)edit.onclick=()=>openQuickNote(n);if(toggle)toggle.onclick=()=>{n.confirmed=!n.confirmed;n.updatedAt=nowISO();save();closeModal();render();toast(n.confirmed?'確認済みにしました':'未確認に戻しました')};if(task)task.onclick=()=>{state.tasks.push({id:uid(),title:n.title||n.text,date:n.date||isoDate(new Date()),done:false,createdAt:nowISO(),auto:false,timing:'終日'});save();closeModal();render();toast('タスクにしました')};if(del)del.onclick=()=>confirmDeleteNote(id)
+}
 function displayMultiline(text){return esc(text||'').replace(/\n/g,'<br>')}
-function openNoteViewer(id){const n=state.notes.find(x=>x.id===id);if(!n)return;if(n.type==='dailyReport')return openReportViewer(n);if(n.type==='meeting')return openMeetingViewer(n);const names=(n.staffIds?.length?n.staffIds:(n.staffId?[n.staffId]:[])).map(x=>staffMemberById(x)?.name).filter(Boolean);openModal(`<div class="viewer-head"><button class="secondary" id="closeViewer">閉じる</button><div class="viewer-actions"><button class="secondary" id="editViewer">編集</button><button class="danger" id="deleteViewer">削除</button></div></div><article class="note-viewer"><div class="note-viewer-type">${esc(labelType(n.type))}</div><h1>${esc(noteDisplayTitle(n))}</h1><div class="note-viewer-meta">${esc(n.date||'')}・更新 ${new Date(n.updatedAt||n.createdAt).toLocaleString('ja-JP')}${names.length?`・${names.map(esc).join(' / ')}`:''}</div><div class="note-viewer-body rich-viewer">${richTextHTML(n.text,n.richHTML)}</div></article>`, 'note-viewer');$('#closeViewer').onclick=closeModal;$('#editViewer').onclick=()=>openQuickNote(n);$('#deleteViewer').onclick=()=>confirmDeleteNote(id)}
+function openNoteViewer(id){
+ const n=state.notes.find(x=>x.id===id);if(!n)return;if(n.type==='dailyReport')return openReportViewer(n);if(n.type==='meeting')return openMeetingViewer(n);
+ const names=(n.staffIds?.length?n.staffIds:(n.staffId?[n.staffId]:[])).map(x=>staffMemberById(x)?.name).filter(Boolean);
+ openModal(`<div class="viewer-head"><button class="secondary" id="closeViewer">閉じる</button><div class="viewer-actions"><button class="secondary" id="editViewer">編集</button><button class="danger" id="deleteViewer">削除</button></div></div><article class="note-viewer simple-fullscreen-note"><div class="note-viewer-type">${esc(labelType(n.type))}</div><h1>${esc(noteDisplayTitle(n))}</h1><div class="note-viewer-meta">${esc(n.date||'')}・更新 ${new Date(n.updatedAt||n.createdAt).toLocaleString('ja-JP')}${names.length?`・${names.map(esc).join(' / ')}`:''}</div><div class="note-viewer-body">${displayMultiline(n.text||htmlToPlainText(n.richHTML||''))}</div></article>`,'note-viewer');
+ const c=$('#closeViewer'),e=$('#editViewer'),d=$('#deleteViewer');if(c)c.onclick=closeModal;if(e)e.onclick=()=>openQuickNote(n);if(d)d.onclick=()=>confirmDeleteNote(id)
+}
 function metricNumber(v){const n=Number(String(v??'').replace(/,/g,''));return Number.isFinite(n)?n:0}
 const PERFORMANCE_FIELDS=[
  ['new','新規'],['deviceChange','機種変更'],['cellUp','セルアップ'],['cellDown','セルダウン'],
@@ -321,13 +335,13 @@ function sellNaviAIContext(data){
 
 
 function workModeForDate(date){
- const shift=shiftForDate(date);
+ const shift=shiftByDate(date);
  if(!shift)return {mode:'unknown',label:'シフト未登録',shift:null,isHoliday:false,isWorkday:false};
- const id=String(shift.id||shift.name||shift.label||'').trim();
- const holiday=/^(OFF|希望休|休日)$/.test(id)||id.includes('OFF')||id.includes('希望休');
- if(holiday)return {mode:'holiday',label:id||'休日',shift,isHoliday:true,isWorkday:false};
- if(isWorkShift(shift))return {mode:'work',label:id||'出勤',shift,isHoliday:false,isWorkday:true};
- return {mode:'unknown',label:id||'未判定',shift,isHoliday:false,isWorkday:false}
+ const id=String(shift.id||shift.name||shift.label||'').trim(),name=String(shift.name||'').trim();
+ const holiday=id==='off'||/^(OFF|希望休|休日)$/i.test(id)||/^(OFF|希望休|休日)$/i.test(name);
+ if(holiday)return {mode:'holiday',label:name||id||'休日',shift,isHoliday:true,isWorkday:false};
+ if(isWorkShift(shift))return {mode:'work',label:name||id||'出勤',shift,isHoliday:false,isWorkday:true};
+ return {mode:'unknown',label:name||id||'未判定',shift,isHoliday:false,isWorkday:false}
 }
 function holidayReportSignals(data={}){
  const texts=[
@@ -346,6 +360,53 @@ function holidayModeBanner(date){
  const wm=workModeForDate(date);
  if(!wm.isHoliday)return '';
  return `<div class="holiday-mode-banner"><span>休日モード</span><strong>${esc(wm.label)}</strong><p>今日は勤務評価をしません。書いた訓練・学習・振り返り・次回準備だけをAIメンターが評価します。</p></div>`
+}
+
+
+const ROLEUP_LOG_KEY='roleplayProLogs';
+const ROLEUP_ASSIGNMENT_KEY='roleup_worknote_assignment_v1';
+const ROLEUP_RESULT_KEY='worknote_roleup_result_bridge_v1';
+function loadRoleupLogs(){try{return JSON.parse(localStorage.getItem(ROLEUP_LOG_KEY)||'[]')||[]}catch{return[]}}
+function roleupDateISO(log){
+ const s=String(log?.date||'');let m=s.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
+ return m?`${m[1]}-${String(m[2]).padStart(2,'0')}-${String(m[3]).padStart(2,'0')}`:''
+}
+function roleupLogsThrough(date=isoDate(new Date()),days=60){
+ const end=new Date(date+'T12:00:00'),start=new Date(end);start.setDate(start.getDate()-days);
+ const sk=isoDate(start);return loadRoleupLogs().filter(x=>{const d=roleupDateISO(x);return d&&d>=sk&&d<=date}).sort((a,b)=>(b.id||0)-(a.id||0))
+}
+function roleupTaskResult(task){
+ if(!task)return null;return loadRoleupLogs().find(x=>String(x.worknoteAssignmentId||'')===String(task.id))||null
+}
+function roleupActiveTask(){
+ const tasks=(state.ai.mentor?.roleupTasks||[]).filter(t=>t.status!=='graduated'&&t.status!=='cancelled').sort((a,b)=>String(b.createdAt||'').localeCompare(String(a.createdAt||'')));
+ for(const t of tasks){const result=roleupTaskResult(t);if(!result)return {...t,status:'assigned'};if(t.status!=='reviewed')return {...t,status:'completed',result}}
+ return tasks[0]||null
+}
+function roleupRecentSummary(date=isoDate(new Date()),days=14){
+ return roleupLogsThrough(date,days).slice(0,12).map(x=>({id:x.id,date:roleupDateISO(x),productId:x.productId,productName:x.productName,difficulty:x.difficulty,score:x.score,breakdown:x.breakdown||{},good:x.good||[],improve:x.improve||[],advice:x.advice||'',worknoteAssignmentId:x.worknoteAssignmentId||'',worknoteFocus:x.worknoteFocus||''}))
+}
+function normalizeRoleupProductId(v=''){
+ const x=String(v).toLowerCase(),map={機種変更:'device',pixel:'pixel',マネ活:'money','uq':'uq',でんき:'electric',電気:'electric',光:'hikari','auひかり':'hikari',サポート定額:'support',プラスワン:'plusone','+1collection':'plusone',タブレット:'tablet'};
+ const id=map[v]||map[x]||x||'device';return id==='plusone'?'device':id
+}
+function createRoleupAssignment(task,source='ai'){
+ const t={id:uid(),title:task.title||task.issueTitle||'ROLEUP訓練',reason:task.reason||task.purpose||'',focus:task.focus||task.method||task.measure||'',productId:normalizeRoleupProductId(task.productId||task.product||'device'),difficulty:task.difficulty||'auto',source,sourceDate:task.sourceDate||isoDate(new Date()),createdAt:nowISO(),status:'assigned'};
+ state.ai.mentor.roleupTasks.push(t);localStorage.setItem(ROLEUP_ASSIGNMENT_KEY,JSON.stringify(t));save();return t
+}
+function launchRoleupTask(task){
+ const t=task?.id?task:createRoleupAssignment(task||{},'manual');localStorage.setItem(ROLEUP_ASSIGNMENT_KEY,JSON.stringify(t));save();
+ window.open('/roleup/','_blank')
+}
+function syncRoleupTaskResults(){
+ let changed=false;(state.ai.mentor.roleupTasks||[]).forEach(t=>{const r=roleupTaskResult(t);if(r&&t.status==='assigned'){t.status='completed';t.completedAt=nowISO();changed=true}});
+ if(changed)save();return changed
+}
+function roleupTrainingCardHTML(){
+ syncRoleupTaskResults();const task=roleupActiveTask(),recent=roleupRecentSummary(undefined,30);
+ if(!task)return `<div class="roleup-training-empty"><strong>現在のROLEUP課題はありません</strong><p>日報AIやAIメンターが、実践練習が必要と判断した時にここへ課題を出します。</p><button class="secondary" id="askRoleupTask">AIに次のROLEUP課題を決めてもらう</button></div>${recent.length?`<div class="roleup-recent"><span>直近の訓練</span>${recent.slice(0,3).map(r=>`<div><b>${esc(r.productName||r.productId)} ${Number(r.score)||0}点</b><small>${esc(r.date||'')}</small></div>`).join('')}</div>`:''}`;
+ const result=task.result||roleupTaskResult(task);
+ return `<div class="roleup-training-status"><span class="tag">${result?'実施済み':'現在の重点課題'}</span><h3>${esc(task.title)}</h3><p>${esc(task.reason||'')}</p>${task.focus?`<div class="roleup-focus"><b>今回の重点</b>${displayMultiline(task.focus)}</div>`:''}${result?`<div class="roleup-result-mini"><strong>${Number(result.score)||0}点</strong><span>${esc(result.productName||task.productId)}・${esc(result.difficulty||'')}</span><p>改善点：${esc((result.improve||[]).join('、')||result.advice||'記録なし')}</p></div><button class="primary" id="roleupNextReview">この結果から次の課題を考える</button>`:`<button class="primary" id="launchRoleupCurrent">🎭 ROLEUPで練習</button>`}</div>${recent.length?`<div class="roleup-recent"><span>直近の訓練</span>${recent.slice(0,3).map(r=>`<div><b>${esc(r.productName||r.productId)} ${Number(r.score)||0}点</b><small>${esc(r.date||'')}</small></div>`).join('')}</div>`:''}`
 }
 
 function activeMentorMemories(date=isoDate(new Date())){
@@ -429,45 +490,26 @@ function reportFeedbackHTML(n){
   ${(a.tomorrowActions||[]).length?`<div class="feedback-block action"><span>次の勤務で実行すること</span><ol>${a.tomorrowActions.map(x=>`<li>${esc(x)}</li>`).join('')}</ol></div>`:''}
   <div class="feedback-priority"><span>次回の最優先</span><strong>${esc(a.topPriority||'')}</strong></div>
   ${(a.memoryUpdates||[]).filter(x=>x.action==='upsert').length?`<div class="feedback-block mentor-memory-captured"><span>AIが継続して覚えること</span><ul>${a.memoryUpdates.filter(x=>x.action==='upsert').map(x=>`<li><b>${esc(x.category)}</b>：${esc(x.content)} <small>（${esc(x.scope)}）</small></li>`).join('')}</ul></div>`:''}
+  ${a.roleupTask?.shouldAssign?`<div class="feedback-block roleup-recommend"><span>🎭 推奨ROLEUP</span><h4>${esc(a.roleupTask.title||'実践ロープレ')}</h4><p>${displayMultiline(a.roleupTask.reason||'')}</p><small>${displayMultiline(a.roleupTask.focus||'')}</small><button class="primary roleup-from-report" data-roleup-report="${n.id}">ROLEUPで練習</button></div>`:''}
   <div class="feedback-block mentor-comment"><span>メンターコメント</span><p>${displayMultiline(a.mentorComment||'')}</p></div>
   ${a.topPriority?'<button class="primary tomorrow-priority-btn" id="sendTomorrowPriority">明日の重点に設定</button>':''}
   <button class="secondary" id="retryDailyFeedback">Geminiで再分析</button>
  </section>`
 }
 function openReportViewer(n){
- const data=n.reportData||{},next=(data.next||[]).filter(Boolean);
+ if(!n)return;
+ const data=n.reportData||{},next=(data.next||[]).filter(Boolean),workMode=workModeForDate(n.date),latestSellNavi=sellNaviSnapshotForDate(n.date)||data.sellNaviSnapshot||null;
  openModal(`<div class="viewer-head"><button class="secondary" id="closeViewer">閉じる</button><div class="viewer-actions"><button class="secondary" id="editViewer">編集</button><button class="danger" id="deleteViewer">削除</button></div></div><article class="report-viewer"><header><div class="note-viewer-type">日報</div><h1>${esc(n.title||reportTitleForDate(n.date))}</h1>${data.score?`<div class="report-score">自己評価 ${esc(data.score)}／10</div>`:''}</header>${REPORT_FIELDS.slice(0,2).filter(([k])=>(data[k]||'').trim()).map(([k,l])=>`<section class="report-view-section"><h3>${esc(l)}</h3><div>${displayMultiline(data[k])}</div></section>`).join('')}${(data.storeAction||'').trim()?`<section class="report-view-section store-action-view"><h3>🏪 店舗状況に対して考えたこと・行動したこと</h3><div>${displayMultiline(data.storeAction)}</div></section>`:''}${workMode.isHoliday?`<section class="report-view-section holiday-view-note"><h3>休日モード</h3><p>今日は勤務評価をしません。店舗数字・スタッフ介入の有無はAI評価対象外です。</p></section>`:`<section class="report-view-section sellnavi-snapshot-view"><h3>セルナビ店舗数字 <button type="button" class="sellnavi-refresh-mini" id="viewerRefreshSellNaviBtn">更新</button></h3><div id="viewerSellNaviHolder">${sellNaviEditorCard(n.date,{...data,sellNaviSnapshot:latestSellNavi})}</div></section>`}${performanceViewerHTML(data)}${REPORT_FIELDS.slice(2).filter(([k])=>(data[k]||'').trim()).map(([k,l])=>`<section class="report-view-section"><h3>${esc(l)}</h3><div>${displayMultiline(data[k])}</div></section>`).join('')}${next.length?`<section class="report-view-section"><h3>明日やること</h3><ol>${next.map(x=>`<li>${esc(x)}</li>`).join('')}</ol></section>`:''}${reportFeedbackHTML(n)}</article>`,'note-viewer');
- $('#closeViewer').onclick=closeModal;$('#editViewer').onclick=()=>openQuickNote(n);$('#deleteViewer').onclick=()=>confirmDeleteNote(n.id);
- const runDailyReanalysis=async(btn)=>{
-  const buttons=['#retryDailyFeedback','#retryDailyFeedbackTop'].map(x=>$(x)).filter(Boolean);
-  buttons.forEach(x=>{x.disabled=true;x.dataset.oldText=x.textContent;x.textContent='Geminiが分析中…'});
-  try{
-   if(state.ai.mode!=='geminiDirect'||!getGeminiApiKey())throw Error('設定からGemini APIキーを設定してください');
-   await requestDailyReportFeedback(n);
-   state.ai.lastError='';save();toast('日報メンター分析を更新しました');openReportViewer(n)
-  }catch(e){
-   const msg=friendlyGeminiError(e,e?.status||0);
-   n.aiFeedbackError=msg;state.ai.lastError=msg;save();openReportViewer(n)
-  }
+ const close=$('#closeViewer'),edit=$('#editViewer'),del=$('#deleteViewer');if(close)close.onclick=closeModal;if(edit)edit.onclick=()=>openQuickNote(n);if(del)del.onclick=()=>confirmDeleteNote(n.id);
+ const runDailyReanalysis=async()=>{
+  const buttons=['#retryDailyFeedback','#retryDailyFeedbackTop'].map(x=>$(x)).filter(Boolean);buttons.forEach(x=>{x.disabled=true;x.textContent='Geminiが分析中…'});
+  try{if(state.ai.mode!=='geminiDirect'||!getGeminiApiKey())throw Error('設定からGemini APIキーを設定してください');await requestDailyReportFeedback(n);state.ai.lastError='';save();toast('日報メンター分析を更新しました');openReportViewer(n)}
+  catch(e){const msg=friendlyGeminiError(e,e?.status||0);n.aiFeedbackError=msg;state.ai.lastError=msg;save();openReportViewer(n)}
  };
- if($('#retryDailyFeedback'))$('#retryDailyFeedback').onclick=e=>runDailyReanalysis(e.currentTarget);
- if($('#retryDailyFeedbackTop'))$('#retryDailyFeedbackTop').onclick=e=>runDailyReanalysis(e.currentTarget);
- if($('#sendTomorrowPriority'))$('#sendTomorrowPriority').onclick=()=>{if(upsertTomorrowGoal(n.date,n.aiFeedback?.topPriority||''))toast('明日の重点に設定しました')};
- $$('[data-training-rule]').forEach(btn=>btn.onclick=()=>{
-  const tr=n.aiFeedback?.trainingPlan?.[Number(btn.dataset.trainingRule)];if(!tr)return;
-  if(addMentorTrainingRule(tr)){toast('訓練を「毎日」の自動タスクに追加しました');openReportViewer(n)}
-  else toast('同じ訓練タスクはすでに登録されています')
- })
-
- if(!workMode.isHoliday){
-  const vbtn=$('#viewerRefreshSellNaviBtn');
-  if(vbtn)vbtn.onclick=()=>{
-   const fresh=sellNaviSnapshotForDate(n.date);
-   const holder=$('#viewerSellNaviHolder');
-   if(holder)holder.innerHTML=sellNaviEditorCard(n.date,{...data,sellNaviSnapshot:fresh||data.sellNaviSnapshot||null});
-   toast(fresh?'セルナビ最新値に更新しました':'セルナビの最新データが見つかりません')
-  }
- }
+ ['#retryDailyFeedback','#retryDailyFeedbackTop'].forEach(sel=>{const x=$(sel);if(x)x.onclick=runDailyReanalysis});
+ $$('[data-add-training]').forEach(btn=>btn.onclick=()=>{const i=Number(btn.dataset.addTraining),training=n.aiFeedback?.trainingPlan?.[i];if(training)addMentorTrainingRule(training)});
+ $$('.roleup-from-report').forEach(btn=>btn.onclick=()=>{const rt=n.aiFeedback?.roleupTask;if(!rt)return;let existing=(state.ai.mentor.roleupTasks||[]).find(t=>t.source==='daily:'+n.id&&t.status!=='cancelled');if(!existing){existing=createRoleupAssignment({...rt,sourceDate:n.date},'daily:'+n.id)}launchRoleupTask(existing)});
+ if(!workMode.isHoliday){const vbtn=$('#viewerRefreshSellNaviBtn');if(vbtn)vbtn.onclick=()=>{const fresh=sellNaviSnapshotForDate(n.date),holder=$('#viewerSellNaviHolder');if(holder)holder.innerHTML=sellNaviEditorCard(n.date,{...data,sellNaviSnapshot:fresh||data.sellNaviSnapshot||null});toast(fresh?'セルナビ最新値に更新しました':'セルナビの最新データが見つかりません')}}
 }
 function loadReportDraft(date){try{return JSON.parse(localStorage.getItem(REPORT_DRAFT_STORE)||'{}')[date]||null}catch{return null}}
 function saveReportDraft(date,draft){try{const all=JSON.parse(localStorage.getItem(REPORT_DRAFT_STORE)||'{}');all[date]=draft;localStorage.setItem(REPORT_DRAFT_STORE,JSON.stringify(all))}catch{}}
@@ -488,21 +530,20 @@ function openQuickNote(existing=null){
  const renderDynamic=()=>{const type=$('#noteType').value,date=$('#noteDate').value||isoDate(new Date()),box=$('#noteEditorDynamic');
   if(type==='dailyReport'){const draft=!existing?loadReportDraft(date):null;const data=existing?.type==='dailyReport'?(existing.reportData||{}):(draft?.data||{});const next=data.next||['','',''];box.innerHTML=`<div class="draft-status" id="draftStatus">${draft?'下書きを復元しました':'入力内容は自動保存されます'}</div><div class="field note-editor-options"><label>タイトル</label><input id="reportTitle" value="${esc(existing?.type==='dailyReport'?(existing.title||reportTitleForDate(date)):(draft?.title||reportTitleForDate(date)))}"></div><div class="staff-picker-block"><div class="small staff-picker-label">スタッフ名入力ショートカット</div><p class="small">スタッフについて書く行の先頭に名前を入れてください。改行したらそのスタッフの話は終了します。</p><div class="staff-picker">${activeStaffMembers().map(m=>`<button type="button" class="staff-pick" data-insert-report-staff="${m.id}">${esc(m.name)}</button>`).join('')||'<span class="small">スタッフ管理から登録するとワンタップ入力できます</span>'}</div></div><div class="report-grid">${holidayModeBanner(date)}${REPORT_FIELDS.slice(0,2).map(([k,l])=>`<div class="field report-field"><label>${l}</label><textarea data-report-field="${k}">${esc(data[k]||'')}</textarea></div>`).join('')}<div class="field report-field store-action-field"><label>🏪 店舗状況に対して考えたこと・行動したこと</label><textarea id="storeAction" placeholder="数字はセルナビから自動取得します。例：GOLDの進捗が弱いため未獲得スタッフへ声掛け。17時に再確認する。">${esc(data.storeAction||'')}</textarea><p class="small">目標・残数の再入力は不要。足りない数字を見て「どう考えた・誰に何を伝えた・次にどう確認する」を書いてください。</p></div><div id="sellNaviSyncHolder">${workModeForDate(date).isHoliday?'<div class="sellnavi-sync-card holiday-sellnavi-note"><strong>今日は休日</strong><p>店舗数字は日報AIの評価対象外です。必要な時だけセルナビ側で確認してください。</p></div>':sellNaviEditorCard(date,data)}</div>${performanceEditorHTML(data)}${REPORT_FIELDS.slice(2).map(([k,l])=>`<div class="field report-field"><label>${l}</label><textarea data-report-field="${k}">${esc(data[k]||'')}</textarea></div>`).join('')}<div class="field report-field"><label>明日やること</label>${[0,1,2].map(i=>`<input class="next-task-input" value="${esc(next[i]||'')}">`).join('')}<label class="check-row"><input type="checkbox" id="addTomorrowTasks" ${data.addTomorrowTasks?'checked':''}> 翌日のタスクに追加</label></div><div class="field report-field"><label>自己評価</label><select id="reportScore"><option value="">未選択</option>${Array.from({length:10},(_,i)=>`<option value="${i+1}" ${String(data.score||'')===String(i+1)?'selected':''}>${i+1}/10</option>`).join('')}</select></div></div>`;}
   else if(type==='meeting'){renderMeetingEditor(box,existing,date);}
-  else{const draft=loadSimpleDraft(existing,type,date);const selectedIds=existing?(existing.staffIds?.length?existing.staffIds:(existing.staffId?[existing.staffId]:[])):(draft?.staffIds||[]);const rawHTML=existing?.richHTML||draft?.richHTML||'';const rawText=existing?.text||draft?.text||'';box.innerHTML=`<div class="draft-status" id="simpleDraftStatus">${draft&&!existing?'下書きを復元しました':'入力内容は自動保存されます'}</div>${staffSelectorHTML(selectedIds)}<div class="field note-editor-body"><label>本文</label>${richToolbarHTML()}<div id="quickRichText" class="rich-editor" contenteditable="true" data-placeholder="メモを入力">${rawHTML?sanitizeRichHTML(rawHTML):esc(rawText).replace(/\n/g,'<br>')}</div></div>`;bindRichToolbar();$$('[data-staff-select]').forEach(x=>x.addEventListener('change',queueSimpleDraft));setTimeout(()=>$('#quickRichText')?.focus(),50);}
+  else{const draft=loadSimpleDraft(existing,type,date);const selectedIds=existing?(existing.staffIds?.length?existing.staffIds:(existing.staffId?[existing.staffId]:[])):(draft?.staffIds||[]);const rawText=existing?.text||draft?.text||htmlToPlainText(existing?.richHTML||draft?.richHTML||'');box.innerHTML=`<div class="draft-status" id="simpleDraftStatus">${draft&&!existing?'下書きを復元しました':'入力内容は自動保存されます'}</div>${staffSelectorHTML(selectedIds)}<div class="field note-editor-body simple-memo-editor"><label>本文</label><textarea id="quickText" placeholder="メモを入力">${esc(rawText)}</textarea></div>`;$$('[data-staff-select]').forEach(x=>x.addEventListener('change',queuePlainDraft));$('#quickText')?.addEventListener('input',queuePlainDraft);setTimeout(()=>$('#quickText')?.focus(),50);}
  };
  const bindStaffPickers=()=>{let lastReportArea=null;$$('[data-report-field],#storeAction,#resultComment').forEach(x=>x.addEventListener('focus',()=>lastReportArea=x));$$('[data-insert-report-staff]').forEach(b=>b.onclick=()=>{const m=staffMemberById(b.dataset.insertReportStaff);const target=lastReportArea||$('[data-report-field="staffRelation"]')||$('[data-report-field]');if(!m||!target)return;const token=`${m.name}さん `,value=target.value||'',start=target.selectionStart??value.length,end=target.selectionEnd??value.length,before=value.slice(0,start),after=value.slice(end),lineStart=before.lastIndexOf('\n')+1,prefix=before.slice(lineStart).trim()?'\n':'';target.value=before+prefix+token+after;const pos=(before+prefix+token).length;target.focus();target.setSelectionRange(pos,pos);target.dispatchEvent(new Event('input',{bubbles:true}))})};
- $('#noteType').onchange=()=>{renderDynamic();bindStaffPickers();bindReportAutosave();bindMeetingAutosave()};
- $('#noteDate').onchange=()=>{const was=$('#noteType').value;renderDynamic();bindStaffPickers();if(was==='dailyReport'&&$('#reportTitle'))$('#reportTitle').value=reportTitleForDate($('#noteDate').value);bindReportAutosave();bindMeetingAutosave()};
- renderDynamic();bindStaffPickers();bindReportAutosave();bindMeetingAutosave();
+ $('#noteType').onchange=()=>{renderDynamic();bindStaffPickers();bindReportAutosave();bindMeetingAutosave();if($('#noteType').value==='dailyReport'&&!workModeForDate($('#noteDate').value).isHoliday)bindSellNaviRefreshButton($('#noteDate').value,existing?.reportData||{})};
+ $('#noteDate').onchange=()=>{const was=$('#noteType').value;renderDynamic();bindStaffPickers();if(was==='dailyReport'&&$('#reportTitle'))$('#reportTitle').value=reportTitleForDate($('#noteDate').value);bindReportAutosave();bindMeetingAutosave();if($('#noteType').value==='dailyReport'&&!workModeForDate($('#noteDate').value).isHoliday)bindSellNaviRefreshButton($('#noteDate').value,existing?.reportData||{})};
+ renderDynamic();bindStaffPickers();bindReportAutosave();bindMeetingAutosave();if($('#noteType').value==='dailyReport'&&!workModeForDate($('#noteDate').value).isHoliday)bindSellNaviRefreshButton($('#noteDate').value,existing?.reportData||{});
  function bindReportAutosave(){if($('#noteType').value!=='dailyReport')return;const handler=()=>{const date=$('#noteDate').value,title=$('#reportTitle')?.value||reportTitleForDate(date),data=collectReportEditorData();saveReportDraft(date,{title,data,savedAt:nowISO()});if($('#draftStatus'))$('#draftStatus').textContent='下書きを自動保存しました'};$$('#noteEditorDynamic input,#noteEditorDynamic textarea,#noteEditorDynamic select,#noteEditorDynamic button[data-insert-report-staff]').forEach(x=>x.addEventListener('input',handler));}
  function bindMeetingAutosave(){if($('#noteType').value!=='meeting')return;const handler=()=>{const d=collectMeetingEditorData();localStorage.setItem('worknote_meeting_draft_'+($('#noteDate').value||date),JSON.stringify(d));const x=$('#meetingDraftStatus');if(x)x.textContent='下書きを自動保存しました'};$$('#noteEditorDynamic input,#noteEditorDynamic textarea,#noteEditorDynamic select').forEach(x=>x.addEventListener('input',handler));}
  $('#saveNote').onclick=async()=>{const type=$('#noteType').value,date=$('#noteDate').value;let addedCount=0,savedDailyReport=null;
   if(type==='dailyReport'){const data=collectReportEditorData();REPORT_FIELDS.forEach(([k])=>data[k]=(data[k]||'').trim());data.storeAction=(data.storeAction||'').trim();data.resultComment=(data.resultComment||'').trim();data.next=(data.next||[]).map(x=>x.trim());data.sellNaviSnapshot=workModeForDate(date).isHoliday?(existing?.reportData?.sellNaviSnapshot||null):(sellNaviSnapshotForDate(date)||existing?.reportData?.sellNaviSnapshot||null);const title=$('#reportTitle').value.trim()||reportTitleForDate(date),text=reportText(data);if(existing){existing.title=title;existing.text=text;existing.type=type;existing.date=date;existing.reportData=data;existing.staff='';existing.staffId='';existing.staffIds=[];existing.updatedAt=nowISO();savedDailyReport=existing}else{savedDailyReport={id:uid(),title,text,type,date,reportData:data,staff:'',staffId:'',staffIds:[],pinned:false,archived:false,createdAt:nowISO(),updatedAt:nowISO()};state.notes.push(savedDailyReport)}clearReportDraft(date);if(data.addTomorrowTasks){addedCount=data.next.filter(Boolean).length;const d=new Date(date+'T12:00:00');d.setDate(d.getDate()+1);const tomorrow=isoDate(d);data.next.filter(Boolean).forEach(title=>{if(!state.tasks.some(t=>t.date===tomorrow&&t.title===title))state.tasks.push({id:uid(),title,date:tomorrow,done:false,createdAt:nowISO(),auto:false,timing:'終日',priority:'中'})})}}
   else if(type==='meeting'){const m=collectMeetingEditorData();if(!m.title.trim())return toast('MTGタイトルを入力してください');if(!m.rawMemo.trim())return toast('MTGメモを入力してください');const target=existing||{id:uid(),createdAt:nowISO(),pinned:false,archived:false};const aiMinutes=existing?.meetingData?.aiMinutes||null;Object.assign(target,{title:m.title.trim(),text:aiMinutes?.summary||m.rawMemo,type:'meeting',date,meetingData:{...m,aiMinutes},staff:'',staffId:'',staffIds:[],updatedAt:nowISO()});if(!existing)state.notes.push(target);localStorage.removeItem('worknote_meeting_draft_'+date);save();closeModal();render();toast('MTGメモを保存しました');setTimeout(()=>openMeetingViewer(target),50);return;}
-  else{const richHTML=sanitizeRichHTML($('#quickRichText')?.innerHTML||''),text=htmlToPlainText(richHTML),staffIds=selectedStaffIdsFromEditor();if(!text)return toast('内容を入力してください');if(type==='staff'&&!staffIds.length)return toast('スタッフを1名以上選択してください');const names=staffIds.map(id=>staffMemberById(id)?.name).filter(Boolean);if(existing){existing.title='';existing.text=text;existing.richHTML=richHTML;existing.type=type;existing.date=date;existing.staffIds=staffIds;existing.staffId=staffIds[0]||'';existing.staff=names.join('・');existing.confirmed=type==='inbox'?(existing.confirmed??false):undefined;existing.updatedAt=nowISO();delete existing.reportData;delete existing.meetingData}else{state.notes.push({id:uid(),text,richHTML,type,date,staffIds,staffId:staffIds[0]||'',staff:names.join('・'),confirmed:type==='inbox'?false:undefined,pinned:false,archived:false,createdAt:nowISO(),updatedAt:nowISO()})}clearSimpleDraft(existing,type,date);}
+  else{const text=($('#quickText')?.value||'').trim(),staffIds=selectedStaffIdsFromEditor();if(!text)return toast('内容を入力してください');if(type==='staff'&&!staffIds.length)return toast('スタッフを1名以上選択してください');const names=staffIds.map(id=>staffMemberById(id)?.name).filter(Boolean);if(existing){existing.title='';existing.text=text;delete existing.richHTML;existing.type=type;existing.date=date;existing.staffIds=staffIds;existing.staffId=staffIds[0]||'';existing.staff=names.join('・');existing.confirmed=type==='inbox'?(existing.confirmed??false):undefined;existing.updatedAt=nowISO();delete existing.reportData;delete existing.meetingData}else{state.notes.push({id:uid(),text,type,date,staffIds,staffId:staffIds[0]||'',staff:names.join('・'),confirmed:type==='inbox'?false:undefined,pinned:false,archived:false,createdAt:nowISO(),updatedAt:nowISO()})}clearSimpleDraft(existing,type,date);}
   save();closeModal();render();if(addedCount)toast(`日報を保存し、明日のタスクを${addedCount}件登録しました`,'明日のタスクを見る',()=>{const d=new Date(date+'T12:00:00');d.setDate(d.getDate()+1);selectedDate=isoDate(d);switchView('calendar')},5000);else toast(type==='dailyReport'?'日報を保存しました':'メモを保存しました');if(savedDailyReport&&state.ai.mode==='geminiDirect'&&getGeminiApiKey()){toast('日報を保存しました・Geminiが1日を評価中…','',null,3500);try{await requestDailyReportFeedback(savedDailyReport);toast('Geminiの厳しいフィードバックを保存しました')}catch(e){state.ai.lastError=e.message||'日報フィードバックに失敗しました';save();toast('日報は保存済みです・Gemini評価のみ失敗しました')}}};
 
- if(type==='dailyReport'&&!workModeForDate(date).isHoliday)bindSellNaviRefreshButton(date,data);
 }
 function eventStartDate(e){return e.startDate||e.date||''}
 function eventEndDate(e){return e.endDate||e.startDate||e.date||''}
@@ -652,12 +693,118 @@ function openPerformanceDay(date,selectedMonth=null){
  $('#backPerformanceMonth').onclick=()=>openPerformanceDashboard(m);
  $$('[data-performance-report]').forEach(b=>b.onclick=()=>{const n=state.notes.find(x=>x.id===b.dataset.performanceReport);if(n)openReportViewer(n)})
 }
+
+
+
+const AI_ROLEUP_ASSIGNMENT_SCHEMA={type:'OBJECT',properties:{
+ shouldAssign:{type:'BOOLEAN'},title:{type:'STRING'},reason:{type:'STRING'},focus:{type:'STRING'},productId:{type:'STRING'},difficulty:{type:'STRING',enum:['auto','level1','level2','level3']},mentorComment:{type:'STRING'}
+},required:['shouldAssign','title','reason','focus','productId','difficulty','mentorComment']};
+async function requestRoleupAssignmentFromMentor(){
+ if(state.ai.mode!=='geminiDirect'||!getGeminiApiKey())throw Error('Gemini直接接続を設定してください');
+ const date=isoDate(new Date()),reports=recentMentorReports(date,14).map(n=>({date:n.date,workMode:workModeForDate(n.date),selfText:selfOnlyReportText(n.reportData||{}),feedback:n.aiFeedback||null}));
+ const input=`あなたはWORKNOTE専属の副店長育成AIメンターです。
+直近の日報・日次フィードバック・継続課題・ROLEUP履歴を見て、今このユーザーにROLEUP実践練習が本当に必要なら1つだけ課題を作ってください。
+知識暗記や数字管理などROLEUPに不向きな課題なら shouldAssign=false。
+接客会話、ヒアリング、質問、説明、切り返し、クロージング、提案の自然さなど、会話練習で改善できる課題を優先してください。
+既にROLEUPで改善し、実務確認待ちの課題を惰性的に再練習させないでください。
+productId は device/pixel/money/uq/electric/hikari/support/tablet のいずれか。difficultyは原則auto。
+
+${JSON.stringify({reports,activeIssues:activeMentorIssues(),activeMemories:activeMentorMemories(date),roleup:roleupRecentSummary(date,30)})}`;
+ const d=await callGeminiDirect({schema:AI_ROLEUP_ASSIGNMENT_SCHEMA,input});
+ if(d.shouldAssign)return createRoleupAssignment({...d,sourceDate:date},'ai-dashboard');
+ return d
+}
+
+const AI_ROLEUP_NEXT_SCHEMA={type:'OBJECT',properties:{
+ decision:{type:'STRING',enum:['repeat','work_check','level_up','graduate']},
+ title:{type:'STRING'},reason:{type:'STRING'},focus:{type:'STRING'},productId:{type:'STRING'},difficulty:{type:'STRING',enum:['auto','level1','level2','level3']},mentorComment:{type:'STRING'}
+},required:['decision','title','reason','focus','productId','difficulty','mentorComment']};
+async function requestRoleupNextTask(task){
+ if(state.ai.mode!=='geminiDirect'||!getGeminiApiKey())throw Error('Gemini直接接続を設定してください');
+ const result=roleupTaskResult(task);if(!result)throw Error('ROLEUP結果がまだありません');
+ const input=`あなたはWORKNOTE専属の副店長育成AIメンターです。
+WORKNOTEで出したロープレ課題と、ROLEUPで実施した結果を比較して次の1手を決めてください。
+点数だけで判断せず、breakdown、improve、advice、会話全文、元の重点課題を見てください。
+decision:
+- repeat: 同じ基礎課題を再練習する必要がある
+- level_up: 同テーマで難易度を上げる
+- work_check: ROLEUPでは十分改善したので、次の出勤で実商談定着を確認する
+- graduate: ROLEUPと既存の実務記録の両方から安定が確認できる時だけ
+同じ課題を惰性的に繰り返させないでください。work_check の場合はROLEUP再実行を必須にしません。
+productId は device/pixel/money/uq/electric/hikari/support/tablet のいずれか。
+
+${JSON.stringify({assignment:task,result,recentRoleup:roleupRecentSummary(isoDate(new Date()),30),recentReports:recentMentorReports(isoDate(new Date()),7).map(n=>({date:n.date,selfText:selfOnlyReportText(n.reportData||{}),feedback:n.aiFeedback||null}))})}`;
+ return await callGeminiDirect({schema:AI_ROLEUP_NEXT_SCHEMA,input})
+}
+async function applyRoleupNextDecision(task){
+ const next=await requestRoleupNextTask(task);task.status=next.decision==='graduate'?'graduated':'reviewed';task.reviewedAt=nowISO();task.review=next;save();
+ if(next.decision==='repeat'||next.decision==='level_up'){
+  createRoleupAssignment({title:next.title,reason:next.reason,focus:next.focus,productId:next.productId,difficulty:next.difficulty},'ai-followup')
+ }
+ return next
+}
+
+const AI_MONTHLY_MENTOR_SCHEMA={type:'OBJECT',properties:{
+ period:{type:'STRING'},overall:{type:'STRING'},growthSummary:{type:'STRING'},
+ areaRatings:{type:'ARRAY',maxItems:8,items:{type:'OBJECT',properties:{area:{type:'STRING'},grade:{type:'STRING',enum:['◎','○','△','×','？']},reason:{type:'STRING'},change:{type:'STRING'}},required:['area','grade','reason','change']}},
+ behaviorPatterns:{type:'ARRAY',maxItems:6,items:{type:'STRING'}},
+ staffDevelopment:{type:'STRING'},storeManagement:{type:'STRING'},managerInstructions:{type:'STRING'},trainingGrowth:{type:'STRING'},roleupGrowth:{type:'STRING'},
+ recurringIssues:{type:'ARRAY',maxItems:6,items:{type:'STRING'}},graduatedIssues:{type:'ARRAY',maxItems:6,items:{type:'STRING'}},
+ nextMonthSkills:{type:'ARRAY',maxItems:2,items:{type:'OBJECT',properties:{skill:{type:'STRING'},reason:{type:'STRING'},practice:{type:'STRING'},measure:{type:'STRING'}},required:['skill','reason','practice','measure']}},
+ mentorComment:{type:'STRING'}
+},required:['period','overall','growthSummary','areaRatings','behaviorPatterns','staffDevelopment','storeManagement','managerInstructions','trainingGrowth','roleupGrowth','recurringIssues','graduatedIssues','nextMonthSkills','mentorComment']};
+function monthKeyFromDate(date=isoDate(new Date())){return String(date).slice(0,7)}
+function latestMonthlyReport(){return [...(state.ai.mentor.monthlyReports||[])].sort((a,b)=>String(b.month||'').localeCompare(String(a.month||'')))[0]||null}
+function monthlySourcePayload(month){
+ const notes=state.notes.filter(n=>!n.archived&&String(n.date||'').startsWith(month)).sort((a,b)=>String(a.date).localeCompare(String(b.date)));
+ const allNotes=notes.map(n=>({date:n.date,type:n.type,title:n.title||'',text:n.text||'',reportData:n.reportData||null,meetingData:n.meetingData||null,aiFeedback:n.aiFeedback||null,staff:n.staff||''}));
+ const memories=(state.ai.mentor.memories||[]).filter(m=>String(m.sourceDate||'').startsWith(month)||String(m.startDate||'').startsWith(month)||(!m.endDate&&m.status==='active'));
+ const weekly=(state.ai.mentor.weeklyReviews||[]).filter(x=>String(x.endDate||'').startsWith(month));
+ const roleup=loadRoleupLogs().filter(x=>roleupDateISO(x).startsWith(month));
+ return {month,allNotes,memories,weeklyReviews:weekly,roleupLogs:roleup,activeIssues:activeMentorIssues()}
+}
+async function requestMonthlyMentorReport(month=monthKeyFromDate()){
+ if(state.ai.mode!=='geminiDirect'||!getGeminiApiKey())throw Error('Gemini直接接続を設定してください');
+ const src=monthlySourcePayload(month);if(!src.allNotes.length&&!src.roleupLogs.length)throw Error('この月の記録がありません');
+ const input=`あなたはWORKNOTE専属の副店長育成AIメンターです。これは販売実績報告ではなく「1か月の副店長成長報告書」です。
+対象月にWORKNOTEへ入力された全記録（日報、通常メモ、スタッフ記録、MTG、AI日次結果、週次結果、継続記憶、休日の学習）とROLEUPロープレ結果を横断し、1日単位では見えない成長・再発・行動パターンを分析してください。
+販売数字は副店長が店舗の基準になれているかを見る一要素。報告書の主役は管理職としての成長です。
+休日は勤務評価をせず、休日に記録された学習・訓練のみ成長材料にしてください。
+ROLEUPは「実施回数」だけでなく、breakdown・improve・advice・会話内容の変化から能力改善を見てください。ROLEUPで高得点でも、日報の実務記録がなければ「実務定着済み」と断定しないでください。
+来月鍛える能力は最大2つ。精神論ではなく具体的な訓練と測定方法を示してください。
+記録にないことは推測で断定しないでください。
+
+${JSON.stringify(src)}`;
+ const d=await callGeminiDirect({schema:AI_MONTHLY_MENTOR_SCHEMA,input}),report={...d,month,createdAt:nowISO(),mentorMonthlyVersion:1};
+ state.ai.mentor.monthlyReports=(state.ai.mentor.monthlyReports||[]).filter(x=>x.month!==month);state.ai.mentor.monthlyReports.push(report);save();return report
+}
+function monthlyReportHTML(r){
+ if(!r)return '<div class="empty">まだ月間レポートはありません。</div>';
+ return `<article class="monthly-mentor-report"><header><span class="tag">月間成長レポート</span><h1>${esc(r.period||r.month)}</h1><p>${displayMultiline(r.overall||'')}</p></header><section><h3>1か月でできるようになったこと</h3><p>${displayMultiline(r.growthSummary||'')}</p></section><section><h3>管理職8領域</h3>${(r.areaRatings||[]).map(x=>`<div class="monthly-rating"><b>${esc(x.area)} <span>${esc(x.grade)}</span></b><p>${esc(x.reason)}</p><small>${esc(x.change||'')}</small></div>`).join('')}</section><section><h3>行動パターン</h3><ul>${(r.behaviorPatterns||[]).map(x=>`<li>${esc(x)}</li>`).join('')}</ul></section><section><h3>スタッフ育成</h3><p>${displayMultiline(r.staffDevelopment||'')}</p></section><section><h3>店舗管理</h3><p>${displayMultiline(r.storeManagement||'')}</p></section><section><h3>店長指示・継続方針</h3><p>${displayMultiline(r.managerInstructions||'')}</p></section><section><h3>訓練・自己成長</h3><p>${displayMultiline(r.trainingGrowth||'')}</p></section><section><h3>ROLEUP成長</h3><p>${displayMultiline(r.roleupGrowth||'')}</p></section><section><h3>繰り返した課題</h3><ul>${(r.recurringIssues||[]).map(x=>`<li>${esc(x)}</li>`).join('')||'<li>なし</li>'}</ul></section><section><h3>卒業できた課題</h3><ul>${(r.graduatedIssues||[]).map(x=>`<li>${esc(x)}</li>`).join('')||'<li>なし</li>'}</ul></section><section><h3>来月鍛える能力</h3>${(r.nextMonthSkills||[]).map(x=>`<div class="monthly-next"><b>${esc(x.skill)}</b><p>${esc(x.reason)}</p><small>訓練：${esc(x.practice)}<br>判定：${esc(x.measure)}</small></div>`).join('')}</section><section class="mentor-comment"><h3>AIメンターからの月末コメント</h3><p>${displayMultiline(r.mentorComment||'')}</p></section></article>`
+}
+function openMonthlyMentor(){
+ const now=monthKeyFromDate(),saved=state.ai.mentor.monthlyReports||[];
+ openModal(`<div class="viewer-head"><button class="secondary" id="backMonthly">‹ AI</button><button class="secondary" id="closeMonthly">閉じる</button></div><article class="performance-dashboard"><header class="performance-head"><span class="tag">副店長育成</span><h1>月間成長レポート</h1><p>当月に入力した全記録＋ROLEUPを元に、1か月の成長を報告書にします。</p></header><div class="field"><label>対象月</label><input type="month" id="monthlyMentorMonth" value="${now}"></div><button class="primary" id="generateMonthlyMentor">月間レポートを生成</button><div id="monthlyMentorResult">${monthlyReportHTML(saved.find(x=>x.month===now)||latestMonthlyReport())}</div></article>`,'note-viewer');
+ const back=$('#backMonthly'),close=$('#closeMonthly'),gen=$('#generateMonthlyMentor'),month=$('#monthlyMentorMonth');if(back)back.onclick=()=>{closeModal();switchView('ai')};if(close)close.onclick=closeModal;
+ if(month)month.onchange=()=>{const holder=$('#monthlyMentorResult');if(holder)holder.innerHTML=monthlyReportHTML((state.ai.mentor.monthlyReports||[]).find(x=>x.month===month.value))};
+ if(gen)gen.onclick=async()=>{gen.disabled=true;gen.textContent='1か月を分析中…';try{const r=await requestMonthlyMentorReport(month.value);$('#monthlyMentorResult').innerHTML=monthlyReportHTML(r);toast('月間成長レポートを保存しました')}catch(e){toast(friendlyGeminiError(e,e?.status||0))}finally{gen.disabled=false;gen.textContent='月間レポートを生成'}}
+}
+
 function renderAI(){
- const staffReports=buildStaffReports().filter(r=>r.active);
- const aiErr=state.ai.lastError?friendlyGeminiError(state.ai.lastError):'';
- $('#view-ai').innerHTML=`<div class="ai-dashboard"><div class="viewer-head"><div><h1>AI副店長メンター</h1><p class="small">日報・行動・訓練をつなぎ、副店長として継続育成します。</p></div><div class="viewer-actions"><button class="secondary" id="aiChatBtn">AIチャット</button><button class="secondary" id="aiRulesBtn">記憶ルール</button></div></div><div class="ai-status-row"><span>接続：${state.ai.mode==='geminiDirect'?'Gemini直接接続':'端末内分析'}</span><span>Gemini：${esc(state.ai.mode==='geminiDirect'?(state.ai.connectionStatus||'未接続'):'必要時のみ使用')}</span></div>${aiErr?`<div class="warning ai-error-banner"><span>${esc(aiErr)}</span><button class="secondary" id="dismissAIError">閉じる</button></div>`:''}<section class="section"><button class="card ai-directory-card" id="openPerformanceDashboard"><div class="ai-directory-icon">数</div><div class="grow"><span class="tag">実績管理</span><h2>月間・日別実績</h2><p>日報に入力した13項目を自動集計</p></div><span class="ai-directory-arrow">›</span></button></section><section class="section"><button class="card ai-directory-card" id="openStaffDirectory"><div class="ai-directory-icon">人</div><div class="grow"><span class="tag">育成管理</span><h2>スタッフ別</h2><p>${staffReports.length?`${staffReports.length}名の育成記録・分析を見る`:'日報やMTGからスタッフ記録をまとめます'}</p></div><span class="ai-directory-arrow">›</span></button></section><section class="section"><button class="card ai-directory-card mentor-memory-card" id="openMentorMemory"><div class="ai-directory-icon">記</div><div class="grow"><span class="tag">継続記憶</span><h2>今月・今週・これから</h2><p>${activeMentorMemories().length?`${activeMentorMemories().length}件の有効な目標・方針・指示を記憶中`:'日報から期間を理解して必要事項を記憶'}</p></div><span class="ai-directory-arrow">›</span></button></section><section class="section"><button class="card ai-directory-card mentor-weekly-card" id="openWeeklyMentor"><div class="ai-directory-icon">週</div><div class="grow"><span class="tag">副店長育成</span><h2>直近7日の育成総括</h2><p>${latestWeeklyReview()?`最終更新 ${new Date(latestWeeklyReview().createdAt).toLocaleDateString('ja-JP')}`:'管理職としての成長・再発課題・訓練効果を分析'}</p></div><span class="ai-directory-arrow">›</span></button></section><section class="section"><div class="card ai-usage-card"><strong>Geminiを使うタイミング</strong><p class="small">AIチャット・スタッフ分析・接続テスト・日報メンター分析・手動の7日育成総括で使用します。画面を開くだけでは分析しません。</p></div></section></div>`;
- $('#aiChatBtn').onclick=openAIChat;$('#aiRulesBtn').onclick=openAIRules;$('#openStaffDirectory').onclick=openStaffDirectory;$('#openPerformanceDashboard').onclick=()=>openPerformanceDashboard();$('#openWeeklyMentor').onclick=openWeeklyMentorReview;$('#openMentorMemory').onclick=openMentorMemory;
- if($('#dismissAIError'))$('#dismissAIError').onclick=()=>{state.ai.lastError='';save();renderAI()}
+ syncRoleupTaskResults();const staffReports=buildStaffReports().filter(r=>r.active),aiErr=state.ai.lastError?friendlyGeminiError(state.ai.lastError):'',monthly=latestMonthlyReport(),task=roleupActiveTask();
+ $('#view-ai').innerHTML=`<div class="ai-dashboard"><div class="viewer-head"><div><h1>AI副店長メンター</h1><p class="small">日報・店舗状況・ROLEUP訓練をつなぎ、副店長として継続育成します。</p></div><div class="viewer-actions"><button class="secondary" id="aiChatBtn">AIチャット</button><button class="secondary" id="aiRulesBtn">記憶ルール</button></div></div><div class="ai-status-row"><span>接続：${state.ai.mode==='geminiDirect'?'Gemini直接接続':'端末内分析'}</span><span>Gemini：${esc(state.ai.mode==='geminiDirect'?(state.ai.connectionStatus||'未接続'):'必要時のみ使用')}</span></div>${aiErr?`<div class="warning ai-error-banner"><span>${esc(aiErr)}</span><button class="secondary" id="dismissAIError">閉じる</button></div>`:''}
+ <section class="section"><div class="card roleup-command-card"><div class="section-head"><div><span class="tag">実践トレーニング</span><h2>🎭 ROLEUP訓練</h2></div><small>${task?esc(task.status):'待機中'}</small></div>${roleupTrainingCardHTML()}</div></section>
+ <section class="section"><button class="card ai-directory-card" id="openPerformanceDashboard"><div class="ai-directory-icon">数</div><div class="grow"><span class="tag">実績管理</span><h2>月間・日別実績</h2><p>日報に入力した13項目を自動集計</p></div><span class="ai-directory-arrow">›</span></button></section>
+ <section class="section"><button class="card ai-directory-card" id="openStaffDirectory"><div class="ai-directory-icon">人</div><div class="grow"><span class="tag">育成管理</span><h2>スタッフ別</h2><p>${staffReports.length?`${staffReports.length}名の育成記録・分析を見る`:'日報やMTGからスタッフ記録をまとめます'}</p></div><span class="ai-directory-arrow">›</span></button></section>
+ <section class="section"><button class="card ai-directory-card mentor-memory-card" id="openMentorMemory"><div class="ai-directory-icon">記</div><div class="grow"><span class="tag">継続記憶</span><h2>今月・今週・これから</h2><p>${activeMentorMemories().length?`${activeMentorMemories().length}件の有効な目標・方針・指示を記憶中`:'日報から期間を理解して必要事項を記憶'}</p></div><span class="ai-directory-arrow">›</span></button></section>
+ <section class="section"><button class="card ai-directory-card mentor-weekly-card" id="openWeeklyMentor"><div class="ai-directory-icon">週</div><div class="grow"><span class="tag">副店長育成</span><h2>直近7日の育成総括</h2><p>${latestWeeklyReview()?`最終更新 ${new Date(latestWeeklyReview().createdAt).toLocaleDateString('ja-JP')}`:'管理職としての成長・再発課題・訓練効果を分析'}</p></div><span class="ai-directory-arrow">›</span></button></section>
+ <section class="section"><button class="card ai-directory-card mentor-monthly-card" id="openMonthlyMentor"><div class="ai-directory-icon">月</div><div class="grow"><span class="tag">月末報告書</span><h2>月間成長レポート</h2><p>${monthly?`${esc(monthly.month)} レポート保存済み`:'当月に入力した全記録＋ROLEUPを横断分析'}</p></div><span class="ai-directory-arrow">›</span></button></section>
+ <section class="section"><div class="card ai-usage-card"><strong>Geminiを使うタイミング</strong><p class="small">AIチャット・スタッフ分析・日報メンター・7日総括・月間レポートの生成時に使用します。画面を開くだけでは分析しません。</p></div></section></div>`;
+ const map={aiChatBtn:openAIChat,aiRulesBtn:openAIRules,openPerformanceDashboard:()=>openPerformanceDashboard(),openStaffDirectory:openStaffDirectory,openMentorMemory,openWeeklyMentor:openWeeklyMentorReview,openMonthlyMentor};
+ Object.entries(map).forEach(([id,fn])=>{const el=$('#'+id);if(el)el.onclick=fn});const dis=$('#dismissAIError');if(dis)dis.onclick=()=>{state.ai.lastError='';save();renderAI()};
+ const ask=$('#askRoleupTask');if(ask)ask.onclick=async()=>{ask.disabled=true;ask.textContent='AIが課題を選定中…';try{const x=await requestRoleupAssignmentFromMentor();if(x?.id){renderAI();toast('ROLEUP課題を作成しました')}else{toast(x?.mentorComment||'今はROLEUPより別の訓練を優先します');ask.disabled=false;ask.textContent='AIに次のROLEUP課題を決めてもらう'}}catch(e){toast(friendlyGeminiError(e,e?.status||0));ask.disabled=false;ask.textContent='AIに次のROLEUP課題を決めてもらう'}};
+ const launch=$('#launchRoleupCurrent');if(launch&&task)launch.onclick=()=>launchRoleupTask(task);
+ const review=$('#roleupNextReview');if(review&&task)review.onclick=async()=>{review.disabled=true;review.textContent='AIが次の課題を判断中…';try{const next=await applyRoleupNextDecision(task);renderAI();toast(next.decision==='work_check'?'次は実商談で定着確認です':next.decision==='graduate'?'この課題は卒業判定です':'次のROLEUP課題を作成しました')}catch(e){toast(friendlyGeminiError(e,e?.status||0));review.disabled=false;review.textContent='この結果から次の課題を考える'}}
 }
 function renderSettings(){$('#view-settings').innerHTML=`<div class="card settings-card" data-setting="shift"><div class="settings-icon">▦</div><div><h3>勤務・シフト</h3><p>月間登録、CSV取込、勤務種類</p></div><button>›</button></div><div class="card settings-card" data-setting="rules"><div class="settings-icon">↻</div><div><h3>自動タスク</h3><p>出勤日ごとの継続業務</p></div><button>›</button></div><div class="card settings-card" data-setting="staff"><div class="settings-icon">人</div><div><h3>スタッフ管理</h3><p>追加・削除・過去スタッフの復帰</p></div><button>›</button></div><div class="card settings-card" data-setting="ai"><div class="settings-icon">AI</div><div><h3>AI副店長補佐</h3><p>チャット、判断ルール、API接続</p></div><button>›</button></div><div class="card settings-card" data-setting="profile"><div class="settings-icon">✎</div><div><h3>表示・プロフィール</h3><p>名前、表示設定</p></div><button>›</button></div><div class="card settings-card" data-setting="update"><div class="settings-icon">⟳</div><div><h3>アプリ更新</h3><p>最新版を確認して更新・現在 v${APP_VERSION}</p></div><button>›</button></div><div class="card settings-card" data-setting="data"><div class="settings-icon">⇩</div><div><h3>データ管理</h3><p>バックアップ、復元、CSV出力</p></div><button>›</button></div><div class="card settings-card" data-setting="notification"><div class="settings-icon">◉</div><div><h3>通知</h3><p>通知全体・自動タスク別のON／OFF</p></div><button>›</button></div><div class="danger-note">WORKNOTEは個人用メモです。お客様の氏名・電話番号・契約情報などの個人情報は保存しないでください。</div>`;$$('[data-setting]').forEach(x=>x.onclick=()=>({shift:openShiftSettings,rules:openRules,staff:openStaffManager,ai:openAISettings,profile:openProfile,update:openAppUpdate,data:openData,notification:openNotifications}[x.dataset.setting])())}
 function openShiftSettings(){openModal(`<h2>勤務・シフト</h2><div class="btn-row"><button class="primary" id="csvImport">CSV取込</button><button class="secondary" id="manualShift">手入力</button></div><section class="section"><h3>シフト種類</h3>${state.shiftTypes.map(s=>`<div class="list-row"><i style="width:12px;height:12px;border-radius:50%;background:${s.color}"></i><div class="grow"><strong>${esc(s.name)}</strong><div class="small">${s.start?`${s.start}〜${s.end}`:'休日'}</div></div><button class="secondary" data-edit-shift="${s.id}">編集</button></div>`).join('')}</section><button class="secondary" id="shiftTemplate" style="width:100%;margin-top:10px">CSVテンプレートを保存</button>`);$('#csvImport').onclick=()=>importCSV();$('#manualShift').onclick=()=>openManualShift();$('#shiftTemplate').onclick=downloadShiftTemplate;$$('[data-edit-shift]').forEach(b=>b.onclick=()=>openShiftTypeEdit(b.dataset.editShift))}
@@ -819,8 +966,11 @@ const AI_DAILY_FEEDBACK_SCHEMA={type:'OBJECT',properties:{
   certainty:{type:'STRING',enum:['confirmed','tentative']},
   startDate:{type:'STRING'},endDate:{type:'STRING'}
  },required:['action','key','category','scope','content','priority','certainty','startDate','endDate']}},
+ roleupTask:{type:'OBJECT',properties:{
+  shouldAssign:{type:'BOOLEAN'},title:{type:'STRING'},reason:{type:'STRING'},focus:{type:'STRING'},productId:{type:'STRING'},difficulty:{type:'STRING',enum:['auto','level1','level2','level3']}
+ },required:['shouldAssign','title','reason','focus','productId','difficulty']},
  mentorComment:{type:'STRING'}
-},required:['workMode','overall','holidayLearningEvaluation','previousCommitmentReview','goalEvaluation','salesEvaluation','deputyManagerEvaluation','dayManagement','numbers','staffManagement','communicationEvaluation','good','issues','areaRatings','issueDiagnosis','trainingPlan','tomorrowActions','topPriority','memoryUpdates','mentorComment']};
+},required:['workMode','overall','holidayLearningEvaluation','previousCommitmentReview','goalEvaluation','salesEvaluation','deputyManagerEvaluation','dayManagement','numbers','staffManagement','communicationEvaluation','good','issues','areaRatings','issueDiagnosis','trainingPlan','tomorrowActions','topPriority','memoryUpdates','roleupTask','mentorComment']};
 async function requestDailyReportFeedback(n){
  if(state.ai.mode!=='geminiDirect'||!getGeminiApiKey())throw Error('Gemini直接接続を設定してください');
  const data=n.reportData||{},date=n.date||isoDate(new Date()),selfText=selfOnlyReportText(data),metrics=data.metrics||{};
@@ -839,6 +989,7 @@ async function requestDailyReportFeedback(n){
   holidaySignals,
   storeManagementAction:workMode.isHoliday?'':(data.storeAction||''),
   sellNaviStoreContext:storeSnapshot,
+  recentRoleup:roleupRecentSummary(date,14),
   mentorHistory:mentor
  };
  const prompt=`あなたはWORKNOTE専属の「副店長育成AIメンター」です。単なる販売実績コーチではありません。
@@ -893,6 +1044,13 @@ async function requestDailyReportFeedback(n){
 - 同じ意味の方針が変更されたら同じ key を使って upsert し、旧内容を置き換えられるようにする。
 - mentorHistory.activeMemories にある既存記憶を踏まえ、現在有効な目標・方針・指示に必要な時だけ触れてください。
 - 期限切れ記憶は現在評価に使わないでください。
+
+【ROLEUP訓練判断】
+- recentRoleup は直近のロープレ結果です。前日にROLEUPを実施していれば、点数だけでなく improve / advice / breakdown を今日のフィードバックへ反映してください。
+- 日報の課題が「知識を読むだけ」ではなく、接客会話・質問・説明・クロージング・切り返しなど実践練習で改善すべき場合だけ roleupTask.shouldAssign=true にしてください。
+- ROLEUP課題は毎日無理に出さないでください。1つの重点課題に絞ってください。
+- productId は device/pixel/money/uq/electric/hikari/support/tablet の中から最も近いもの。難易度は通常 auto、既に同テーマを反復している場合のみ level2/level3 を検討。
+- 直近ROLEUPで改善した課題は、次は実商談での定着確認を優先し、同じロープレを惰性的に繰り返させないでください。
 
 【出力モード】
 - workMode.mode='holiday' の場合、出力 workMode は必ず holiday。
@@ -965,7 +1123,7 @@ async function requestWeeklyMentorReview(date=isoDate(new Date())){
 - 販売成績が管理職行動に影響している場合のみ補足材料として触れてよいですが、独立した販売実績評価は不要です。
 - 精神論ではなく、記録された行動から厳密に判断してください。
 
-${JSON.stringify({reports:compact,activeIssues:activeMentorIssues(),activeMemories:activeMentorMemories(date)})}`;
+${JSON.stringify({reports:compact,activeIssues:activeMentorIssues(),activeMemories:activeMentorMemories(date),roleup:roleupRecentSummary(date,7)})}`;
  const d=await callGeminiDirect({schema:AI_WEEKLY_MENTOR_SCHEMA,input});
  const review={...d,mentorWeeklyVersion:2,createdAt:nowISO(),endDate:date};
  state.ai.mentor.weeklyReviews=(state.ai.mentor.weeklyReviews||[]).filter(x=>x.endDate!==date);
