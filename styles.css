@@ -187,3 +187,95 @@
 .ai-error-banner span{flex:1}
 .weekly-skill{background:#f7f9fc;border-radius:12px;padding:12px;margin-top:9px}
 .weekly-skill p{margin:6px 0!important}
+
+
+/* v29.2 AIメンター可読性修正 */
+.mentor-feedback{
+  color:#f6f8fb;
+}
+.mentor-feedback .feedback-block{
+  color:#17263a;
+  background:#ffffff;
+}
+.mentor-feedback .feedback-block>span{
+  color:#53657a;
+}
+.mentor-feedback .feedback-block p,
+.mentor-feedback .feedback-block li,
+.mentor-feedback .feedback-block b,
+.mentor-feedback .feedback-block strong{
+  color:#17263a;
+}
+.mentor-rating-list>div{
+  background:#f7f9fc;
+  color:#17263a;
+}
+.mentor-rating-list>div strong,
+.mentor-rating-list>div p{
+  color:#17263a !important;
+}
+.mentor-diagnosis article,
+.mentor-training article{
+  background:#f7f9fc;
+  color:#17263a;
+  border:1px solid #e4eaf0;
+}
+.mentor-diagnosis article strong,
+.mentor-diagnosis article b,
+.mentor-diagnosis article p,
+.mentor-training article strong,
+.mentor-training article b,
+.mentor-training article p{
+  color:#17263a !important;
+}
+.mentor-issue-head b{
+  color:#40536a !important;
+  background:#e8eef5;
+}
+.mentor-issue-head em{
+  color:#68798c !important;
+}
+.mentor-training-meta span{
+  color:#40536a !important;
+  background:#e8eef5;
+}
+.mentor-comment{
+  background:#ffffff;
+  color:#17263a;
+}
+.mentor-comment p{
+  color:#17263a !important;
+}
+.feedback-priority{
+  color:#17263a;
+  background:#ffffff;
+}
+.feedback-priority span{
+  color:#68798c;
+}
+.feedback-priority strong{
+  color:#17263a;
+}
+.weekly-mentor-review{
+  color:#17263a;
+}
+.weekly-mentor-review section{
+  background:#ffffff;
+  color:#17263a;
+}
+.weekly-mentor-review h2,
+.weekly-mentor-review h3,
+.weekly-mentor-review p,
+.weekly-mentor-review li,
+.weekly-mentor-review strong,
+.weekly-mentor-review b{
+  color:#17263a;
+}
+.weekly-skill{
+  background:#f7f9fc;
+  border:1px solid #e4eaf0;
+  color:#17263a;
+}
+.grade-◎,.grade-○,.grade-△,.grade-×,.grade-？{
+  color:#17263a !important;
+}

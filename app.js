@@ -1,7 +1,7 @@
 'use strict';
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const STORE='worknote_state_v1';
-const APP_VERSION='29.1.0';
+const APP_VERSION='29.2.0';
 const REPORT_DRAFT_STORE='worknote_report_drafts_v1';
 const GEMINI_KEY_STORE='worknote_gemini_api_key_v1';
 const V15_CLEANUP_STORE='worknote_v15_cleanup_done';
