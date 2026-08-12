@@ -1,8 +1,11 @@
 'use strict';
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const STORE='worknote_state_v1';
-const APP_VERSION='31.0.0';
+const APP_VERSION='31.2.0';
 const REPORT_DRAFT_STORE='worknote_report_drafts_v1';
+const CARD_SCORE_BRIDGE_KEY='worknote_cardscore_daily_v1';
+const CARD_SCORE_DB_KEY='aupay_v2';
+const CARD_SCORE_HISTORY_IMPORT_KEY='worknote_cardscore_history_import_v1';
 const GEMINI_KEY_STORE='worknote_gemini_api_key_v1';
 const V15_CLEANUP_STORE='worknote_v15_cleanup_done';
 const DEFAULT_GEMINI_MODEL='gemini-3.1-flash-lite';
@@ -59,7 +62,7 @@ let currentView='home', calCursor=new Date(), selectedDate=isoDate(new Date());
 let swRegistration=null, updateReloading=false;
 function clone(v){return JSON.parse(JSON.stringify(v))}
 function load(){try{const x=JSON.parse(localStorage.getItem(STORE));return x?Object.assign(clone(DEFAULT),x):clone(DEFAULT)}catch{return clone(DEFAULT)}}
-function save(){localStorage.setItem(STORE,JSON.stringify(state))}
+function save(){localStorage.setItem(STORE,JSON.stringify(state));syncCardScoreBridgeFromState()}
 function toast(t,actionLabel='',action=null,duration=2200){const e=$('#toast');e.innerHTML=`<span>${esc(t)}</span>${actionLabel?`<button id="toastAction">${esc(actionLabel)}</button>`:''}`;e.classList.remove('hidden');clearTimeout(toast.t);if(actionLabel&&$('#toastAction'))$('#toastAction').onclick=()=>{clearTimeout(toast.t);e.classList.add('hidden');action?.()};toast.t=setTimeout(()=>e.classList.add('hidden'),duration)}
 function formatDate(d){return new Intl.DateTimeFormat('ja-JP',{month:'long',day:'numeric',weekday:'long'}).format(d)}
 function shiftByDate(date){const id=state.shifts[date];return state.shiftTypes.find(x=>x.id===id)}
@@ -163,7 +166,7 @@ function openNoteViewer(id){
 }
 function metricNumber(v){const n=Number(String(v??'').replace(/,/g,''));return Number.isFinite(n)?n:0}
 const PERFORMANCE_FIELDS=[
- ['new','新規'],['deviceChange','機種変更'],['cellUp','セルアップ'],['cellDown','セルダウン'],
+ ['new','新規'],['deviceChange','機種変更'],['deviceChangeMane','機種変更 内マネ活'],['cellUp','セルアップ'],['cellUpMane','セルアップ 内マネ活'],['cellDown','セルダウン'],
  ['supportFixed','サポート定額'],['paidSupport','有償サポート'],['plusOne','+1Collection'],['card','クレカ'],['gold','内GOLD'],
  ['bank','じぶん銀行'],['hikari','光'],['electricity','でんき'],['pixel','Pixel']
 ];
@@ -172,6 +175,62 @@ function loadMonthlyGoals(){try{return JSON.parse(localStorage.getItem(MONTHLY_G
 function saveMonthlyGoals(x){localStorage.setItem(MONTHLY_GOAL_STORAGE_KEY,JSON.stringify(x||{}))}
 function monthKey(date=isoDate(new Date())){return String(date).slice(0,7)}
 function monthlyGoalFor(key,date=isoDate(new Date())){const all=loadMonthlyGoals();return Number(all[monthKey(date)]?.[key]||0)}
+function cardScoreBridgeValue(report){
+ const m=report?.reportData?.metrics||{},card=Math.max(0,metricNumber(m.card)),gold=Math.max(0,metricNumber(m.gold));
+ return {silver:Math.max(0,card-gold),gold,jibun:Math.max(0,metricNumber(m.bank)),kishu_target:Math.max(0,metricNumber(m.deviceChange)),kishu_mane:Math.max(0,metricNumber(m.deviceChangeMane)),sellup_target:Math.max(0,metricNumber(m.cellUp)),sellup_mane:Math.max(0,metricNumber(m.cellUpMane))}
+}
+function syncCardScoreBridgeFromState(){
+ try{
+  const latest={};
+  (state.notes||[]).filter(n=>!n.archived&&n.type==='dailyReport'&&/^\d{4}-\d{2}-\d{2}$/.test(n.date||'')).forEach(n=>{const cur=latest[n.date];if(!cur||String(n.updatedAt||n.createdAt||'')>=String(cur.updatedAt||cur.createdAt||''))latest[n.date]=n});
+  const days={};Object.entries(latest).forEach(([date,n])=>days[date]=cardScoreBridgeValue(n));
+  localStorage.setItem(CARD_SCORE_BRIDGE_KEY,JSON.stringify({version:1,source:'WORKNOTE',profile:state.profile?.name||'ヒガ',updatedAt:nowISO(),days}));
+  return days
+ }catch(error){console.warn('CARD SCORE bridge sync failed:',error);return null}
+}
+function cardScoreHistoryDaily(){
+ try{
+  const db=JSON.parse(localStorage.getItem(CARD_SCORE_DB_KEY)||'{}'),out={};
+  const ensure=date=>out[date]||(out[date]={silver:0,gold:0,jibun:0,kishu_target:0,kishu_mane:0,sellup_target:0,sellup_mane:0,sourceCount:0});
+  (Array.isArray(db.entries)?db.entries:[]).forEach(e=>{
+   if(e?.member!=='ヒガ'||!/^\d{4}-\d{2}-\d{2}$/.test(e?.date||''))return;
+   const d=ensure(e.date),v=e.values||{};d.sourceCount++;
+   if(e.type==='combined'||Object.keys(v).length){d.silver+=metricNumber(v.silver);d.gold+=metricNumber(v.gold);d.jibun+=metricNumber(v.jibun);d.kishu_target+=metricNumber(v.kishu_target);d.kishu_mane+=metricNumber(v.kishu_got??v.kishu_mane);d.sellup_target+=metricNumber(v.sellup_target);d.sellup_mane+=metricNumber(v.sellup_got??v.sellup_mane);return}
+   const text=String(e.detail||'');
+   if(e.type==='card'||/[SG]|じぶん銀行|銀行/.test(text)){
+    const sm=text.match(/S\s*(\d+)(?:枚)?/i),gm=text.match(/G\s*(\d+)(?:枚)?/i),jm=text.match(/(?:じぶん銀行|銀行)\s*(\d+)(?:件)?/);
+    if(sm)d.silver+=metricNumber(sm[1]);if(gm)d.gold+=metricNumber(gm[1]);if(jm)d.jibun+=metricNumber(jm[1]);
+   }
+   if(e.type==='mane'||/機種変更|セルアップ/.test(text)){
+    const tm=text.match(/対象\s*(\d+)件?/),mm=text.match(/マネ活\s*(\d+)件?/);
+    if(/機種変更/.test(text)){if(tm)d.kishu_target+=metricNumber(tm[1]);if(mm)d.kishu_mane+=metricNumber(mm[1])}
+    if(/セルアップ/.test(text)){if(tm)d.sellup_target+=metricNumber(tm[1]);if(mm)d.sellup_mane+=metricNumber(mm[1])}
+   }
+  });
+  return out
+ }catch(error){console.warn('CARD SCORE history read failed:',error);return {}}
+}
+function importCardScoreHistory({force=false,notify=true}={}){
+ const days=cardScoreHistoryDaily(),dates=Object.keys(days).sort();
+ if(!dates.length){if(notify)toast('CARD SCOREにヒガの過去入力ログが見つかりません');return {days:0,created:0,updated:0}}
+ if(!force&&localStorage.getItem(CARD_SCORE_HISTORY_IMPORT_KEY))return {days:0,created:0,updated:0,skipped:true};
+ let created=0,updated=0;
+ dates.forEach(date=>{
+  const d=days[date];let report=dailyReportForDate(date);
+  if(!report){const data={goal:'',actions:'',storeAction:'',metrics:{},resultComment:'CARD SCOREの過去実績から自動移行',good:'',improve:'',staffRelation:'',insight:'',next:['','',''],score:'',addTomorrowTasks:false,importedFromCardScore:true};report={id:uid(),title:reportTitleForDate(date),text:'',type:'dailyReport',date,reportData:data,staff:'',staffId:'',staffIds:[],pinned:false,archived:false,createdAt:nowISO(),updatedAt:nowISO()};state.notes.push(report);created++}else{report.reportData=report.reportData||{};report.reportData.metrics=report.reportData.metrics||{};updated++}
+  const m=report.reportData.metrics;
+  m.card=d.silver+d.gold;m.gold=d.gold;m.bank=d.jibun;m.deviceChange=d.kishu_target;m.deviceChangeMane=d.kishu_mane;m.cellUp=d.sellup_target;m.cellUpMane=d.sellup_mane;
+  report.reportData.importedFromCardScore=true;report.reportData.cardScoreImportedAt=nowISO();report.text=reportText(report.reportData);report.updatedAt=nowISO();
+ });
+ save();syncCardScoreBridgeFromState();localStorage.setItem(CARD_SCORE_HISTORY_IMPORT_KEY,JSON.stringify({version:1,importedAt:nowISO(),dates}));
+ if(notify)toast(`CARD SCOREから${dates.length}日分を日報へ移行しました`,'',null,3500);
+ return {days:dates.length,created,updated}
+}
+function openCardScoreHistoryImport(){
+ const days=cardScoreHistoryDaily(),dates=Object.keys(days).sort(),done=localStorage.getItem(CARD_SCORE_HISTORY_IMPORT_KEY);
+ openModal(`<h2>CARD SCORE 過去実績移行</h2><div class="card"><strong>${dates.length?`${dates.length}日分のヒガ実績を検出`:'移行できる過去ログなし'}</strong><p class="small">CARD SCOREで入力済みの日付・クレカ・じぶん銀行・機種変更・セルアップ・マネ活をWORKNOTEの日報へ移します。何度実行しても加算せず、該当日の実績欄を同じ値に更新します。</p>${done?'<p class="small">✓ 過去に移行実行済みです。再実行も可能です。</p>':''}</div><div class="btn-row"><button class="secondary" id="cancelCardScoreImport">閉じる</button><button class="primary" id="runCardScoreImport" ${dates.length?'':'disabled'}>${done?'再移行する':'移行する'}</button></div>`);
+ $('#cancelCardScoreImport').onclick=closeModal;const b=$('#runCardScoreImport');if(b)b.onclick=()=>{const r=importCardScoreHistory({force:true,notify:false});closeModal();render();toast(`CARD SCOREから${r.days}日分を移行しました`,'',null,3500)}
+}
 function monthlyActualFor(key,date=isoDate(new Date())){const reports=performanceReportsForMonth(monthKey(date));return reports.reduce((sum,n)=>sum+Number(n.reportData?.metrics?.[key]||0),0)}
 function monthlyProgressData(date=isoDate(new Date())){return PERFORMANCE_FIELDS.map(([key,label])=>{const goal=monthlyGoalFor(key,date),actual=monthlyActualFor(key,date),remain=Math.max(0,goal-actual),rate=goal>0?Math.round(actual/goal*100):0;return{key,label,goal,actual,remain,rate}})}
 function remainingWorkDaysEstimate(date=isoDate(new Date())){
@@ -539,7 +598,7 @@ function openQuickNote(existing=null){
  function bindReportAutosave(){if($('#noteType').value!=='dailyReport')return;const handler=()=>{const date=$('#noteDate').value,title=$('#reportTitle')?.value||reportTitleForDate(date),data=collectReportEditorData();saveReportDraft(date,{title,data,savedAt:nowISO()});if($('#draftStatus'))$('#draftStatus').textContent='下書きを自動保存しました'};$$('#noteEditorDynamic input,#noteEditorDynamic textarea,#noteEditorDynamic select,#noteEditorDynamic button[data-insert-report-staff]').forEach(x=>x.addEventListener('input',handler));}
  function bindMeetingAutosave(){if($('#noteType').value!=='meeting')return;const handler=()=>{const d=collectMeetingEditorData();localStorage.setItem('worknote_meeting_draft_'+($('#noteDate').value||date),JSON.stringify(d));const x=$('#meetingDraftStatus');if(x)x.textContent='下書きを自動保存しました'};$$('#noteEditorDynamic input,#noteEditorDynamic textarea,#noteEditorDynamic select').forEach(x=>x.addEventListener('input',handler));}
  $('#saveNote').onclick=async()=>{const type=$('#noteType').value,date=$('#noteDate').value;let addedCount=0,savedDailyReport=null;
-  if(type==='dailyReport'){const data=collectReportEditorData();REPORT_FIELDS.forEach(([k])=>data[k]=(data[k]||'').trim());data.storeAction=(data.storeAction||'').trim();data.resultComment=(data.resultComment||'').trim();data.next=(data.next||[]).map(x=>x.trim());data.sellNaviSnapshot=workModeForDate(date).isHoliday?(existing?.reportData?.sellNaviSnapshot||null):(sellNaviSnapshotForDate(date)||existing?.reportData?.sellNaviSnapshot||null);const title=$('#reportTitle').value.trim()||reportTitleForDate(date),text=reportText(data);if(existing){existing.title=title;existing.text=text;existing.type=type;existing.date=date;existing.reportData=data;existing.staff='';existing.staffId='';existing.staffIds=[];existing.updatedAt=nowISO();savedDailyReport=existing}else{savedDailyReport={id:uid(),title,text,type,date,reportData:data,staff:'',staffId:'',staffIds:[],pinned:false,archived:false,createdAt:nowISO(),updatedAt:nowISO()};state.notes.push(savedDailyReport)}clearReportDraft(date);if(data.addTomorrowTasks){addedCount=data.next.filter(Boolean).length;const d=new Date(date+'T12:00:00');d.setDate(d.getDate()+1);const tomorrow=isoDate(d);data.next.filter(Boolean).forEach(title=>{if(!state.tasks.some(t=>t.date===tomorrow&&t.title===title))state.tasks.push({id:uid(),title,date:tomorrow,done:false,createdAt:nowISO(),auto:false,timing:'終日',priority:'中'})})}}
+  if(type==='dailyReport'){const data=collectReportEditorData();REPORT_FIELDS.forEach(([k])=>data[k]=(data[k]||'').trim());data.storeAction=(data.storeAction||'').trim();data.resultComment=(data.resultComment||'').trim();data.next=(data.next||[]).map(x=>x.trim());if(metricNumber(data.metrics?.deviceChangeMane)>metricNumber(data.metrics?.deviceChange))return toast('機種変更のマネ活件数は機種変更件数以下にしてください');if(metricNumber(data.metrics?.cellUpMane)>metricNumber(data.metrics?.cellUp))return toast('セルアップのマネ活件数はセルアップ件数以下にしてください');if(metricNumber(data.metrics?.gold)>metricNumber(data.metrics?.card))return toast('GOLD枚数はクレカ合計枚数以下にしてください');data.sellNaviSnapshot=workModeForDate(date).isHoliday?(existing?.reportData?.sellNaviSnapshot||null):(sellNaviSnapshotForDate(date)||existing?.reportData?.sellNaviSnapshot||null);const title=$('#reportTitle').value.trim()||reportTitleForDate(date),text=reportText(data);if(existing){existing.title=title;existing.text=text;existing.type=type;existing.date=date;existing.reportData=data;existing.staff='';existing.staffId='';existing.staffIds=[];existing.updatedAt=nowISO();savedDailyReport=existing}else{savedDailyReport={id:uid(),title,text,type,date,reportData:data,staff:'',staffId:'',staffIds:[],pinned:false,archived:false,createdAt:nowISO(),updatedAt:nowISO()};state.notes.push(savedDailyReport)}clearReportDraft(date);if(data.addTomorrowTasks){addedCount=data.next.filter(Boolean).length;const d=new Date(date+'T12:00:00');d.setDate(d.getDate()+1);const tomorrow=isoDate(d);data.next.filter(Boolean).forEach(title=>{if(!state.tasks.some(t=>t.date===tomorrow&&t.title===title))state.tasks.push({id:uid(),title,date:tomorrow,done:false,createdAt:nowISO(),auto:false,timing:'終日',priority:'中'})})}}
   else if(type==='meeting'){const m=collectMeetingEditorData();if(!m.title.trim())return toast('MTGタイトルを入力してください');if(!m.rawMemo.trim())return toast('MTGメモを入力してください');const target=existing||{id:uid(),createdAt:nowISO(),pinned:false,archived:false};const aiMinutes=existing?.meetingData?.aiMinutes||null;Object.assign(target,{title:m.title.trim(),text:aiMinutes?.summary||m.rawMemo,type:'meeting',date,meetingData:{...m,aiMinutes},staff:'',staffId:'',staffIds:[],updatedAt:nowISO()});if(!existing)state.notes.push(target);localStorage.removeItem('worknote_meeting_draft_'+date);save();closeModal();render();toast('MTGメモを保存しました');setTimeout(()=>openMeetingViewer(target),50);return;}
   else{const text=($('#quickText')?.value||'').trim(),staffIds=selectedStaffIdsFromEditor();if(!text)return toast('内容を入力してください');if(type==='staff'&&!staffIds.length)return toast('スタッフを1名以上選択してください');const names=staffIds.map(id=>staffMemberById(id)?.name).filter(Boolean);if(existing){existing.title='';existing.text=text;delete existing.richHTML;existing.type=type;existing.date=date;existing.staffIds=staffIds;existing.staffId=staffIds[0]||'';existing.staff=names.join('・');existing.confirmed=type==='inbox'?(existing.confirmed??false):undefined;existing.updatedAt=nowISO();delete existing.reportData;delete existing.meetingData}else{state.notes.push({id:uid(),text,type,date,staffIds,staffId:staffIds[0]||'',staff:names.join('・'),confirmed:type==='inbox'?false:undefined,pinned:false,archived:false,createdAt:nowISO(),updatedAt:nowISO()})}clearSimpleDraft(existing,type,date);}
   save();closeModal();render();if(addedCount)toast(`日報を保存し、明日のタスクを${addedCount}件登録しました`,'明日のタスクを見る',()=>{const d=new Date(date+'T12:00:00');d.setDate(d.getDate()+1);selectedDate=isoDate(d);switchView('calendar')},5000);else toast(type==='dailyReport'?'日報を保存しました':'メモを保存しました');if(savedDailyReport&&state.ai.mode==='geminiDirect'&&getGeminiApiKey()){toast('日報を保存しました・Geminiが1日を評価中…','',null,3500);try{await requestDailyReportFeedback(savedDailyReport);toast('Geminiの厳しいフィードバックを保存しました')}catch(e){state.ai.lastError=e.message||'日報フィードバックに失敗しました';save();toast('日報は保存済みです・Gemini評価のみ失敗しました')}}};
@@ -806,7 +865,7 @@ function renderAI(){
  const launch=$('#launchRoleupCurrent');if(launch&&task)launch.onclick=()=>launchRoleupTask(task);
  const review=$('#roleupNextReview');if(review&&task)review.onclick=async()=>{review.disabled=true;review.textContent='AIが次の課題を判断中…';try{const next=await applyRoleupNextDecision(task);renderAI();toast(next.decision==='work_check'?'次は実商談で定着確認です':next.decision==='graduate'?'この課題は卒業判定です':'次のROLEUP課題を作成しました')}catch(e){toast(friendlyGeminiError(e,e?.status||0));review.disabled=false;review.textContent='この結果から次の課題を考える'}}
 }
-function renderSettings(){$('#view-settings').innerHTML=`<div class="card settings-card" data-setting="shift"><div class="settings-icon">▦</div><div><h3>勤務・シフト</h3><p>月間登録、CSV取込、勤務種類</p></div><button>›</button></div><div class="card settings-card" data-setting="rules"><div class="settings-icon">↻</div><div><h3>自動タスク</h3><p>出勤日ごとの継続業務</p></div><button>›</button></div><div class="card settings-card" data-setting="staff"><div class="settings-icon">人</div><div><h3>スタッフ管理</h3><p>追加・削除・過去スタッフの復帰</p></div><button>›</button></div><div class="card settings-card" data-setting="ai"><div class="settings-icon">AI</div><div><h3>AI副店長補佐</h3><p>チャット、判断ルール、API接続</p></div><button>›</button></div><div class="card settings-card" data-setting="profile"><div class="settings-icon">✎</div><div><h3>表示・プロフィール</h3><p>名前、表示設定</p></div><button>›</button></div><div class="card settings-card" data-setting="update"><div class="settings-icon">⟳</div><div><h3>アプリ更新</h3><p>最新版を確認して更新・現在 v${APP_VERSION}</p></div><button>›</button></div><div class="card settings-card" data-setting="data"><div class="settings-icon">⇩</div><div><h3>データ管理</h3><p>バックアップ、復元、CSV出力</p></div><button>›</button></div><div class="card settings-card" data-setting="notification"><div class="settings-icon">◉</div><div><h3>通知</h3><p>通知全体・自動タスク別のON／OFF</p></div><button>›</button></div><div class="danger-note">WORKNOTEは個人用メモです。お客様の氏名・電話番号・契約情報などの個人情報は保存しないでください。</div>`;$$('[data-setting]').forEach(x=>x.onclick=()=>({shift:openShiftSettings,rules:openRules,staff:openStaffManager,ai:openAISettings,profile:openProfile,update:openAppUpdate,data:openData,notification:openNotifications}[x.dataset.setting])())}
+function renderSettings(){$('#view-settings').innerHTML=`<div class="card settings-card" data-setting="shift"><div class="settings-icon">▦</div><div><h3>勤務・シフト</h3><p>月間登録、CSV取込、勤務種類</p></div><button>›</button></div><div class="card settings-card" data-setting="rules"><div class="settings-icon">↻</div><div><h3>自動タスク</h3><p>出勤日ごとの継続業務</p></div><button>›</button></div><div class="card settings-card" data-setting="staff"><div class="settings-icon">人</div><div><h3>スタッフ管理</h3><p>追加・削除・過去スタッフの復帰</p></div><button>›</button></div><div class="card settings-card" data-setting="ai"><div class="settings-icon">AI</div><div><h3>AI副店長補佐</h3><p>チャット、判断ルール、API接続</p></div><button>›</button></div><div class="card settings-card" data-setting="profile"><div class="settings-icon">✎</div><div><h3>表示・プロフィール</h3><p>名前、表示設定</p></div><button>›</button></div><div class="card settings-card" data-setting="cardscore"><div class="settings-icon">CS</div><div><h3>CARD SCORE連携</h3><p>過去に入力したヒガ実績を日報へ移行</p></div><button>›</button></div><div class="card settings-card" data-setting="update"><div class="settings-icon">⟳</div><div><h3>アプリ更新</h3><p>最新版を確認して更新・現在 v${APP_VERSION}</p></div><button>›</button></div><div class="card settings-card" data-setting="data"><div class="settings-icon">⇩</div><div><h3>データ管理</h3><p>バックアップ、復元、CSV出力</p></div><button>›</button></div><div class="card settings-card" data-setting="notification"><div class="settings-icon">◉</div><div><h3>通知</h3><p>通知全体・自動タスク別のON／OFF</p></div><button>›</button></div><div class="danger-note">WORKNOTEは個人用メモです。お客様の氏名・電話番号・契約情報などの個人情報は保存しないでください。</div>`;$$('[data-setting]').forEach(x=>x.onclick=()=>({shift:openShiftSettings,rules:openRules,staff:openStaffManager,ai:openAISettings,profile:openProfile,cardscore:openCardScoreHistoryImport,update:openAppUpdate,data:openData,notification:openNotifications}[x.dataset.setting])())}
 function openShiftSettings(){openModal(`<h2>勤務・シフト</h2><div class="btn-row"><button class="primary" id="csvImport">CSV取込</button><button class="secondary" id="manualShift">手入力</button></div><section class="section"><h3>シフト種類</h3>${state.shiftTypes.map(s=>`<div class="list-row"><i style="width:12px;height:12px;border-radius:50%;background:${s.color}"></i><div class="grow"><strong>${esc(s.name)}</strong><div class="small">${s.start?`${s.start}〜${s.end}`:'休日'}</div></div><button class="secondary" data-edit-shift="${s.id}">編集</button></div>`).join('')}</section><button class="secondary" id="shiftTemplate" style="width:100%;margin-top:10px">CSVテンプレートを保存</button>`);$('#csvImport').onclick=()=>importCSV();$('#manualShift').onclick=()=>openManualShift();$('#shiftTemplate').onclick=downloadShiftTemplate;$$('[data-edit-shift]').forEach(b=>b.onclick=()=>openShiftTypeEdit(b.dataset.editShift))}
 function openManualShift(){const month=isoDate(new Date()).slice(0,7);openModal(`<h2>シフトを手入力</h2><div class="field"><label>日付</label><input type="date" id="shiftDate" value="${month}-01"></div><div class="field"><label>勤務</label><select id="shiftType">${state.shiftTypes.map(s=>`<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select></div><div class="btn-row"><button class="secondary" id="cancel">キャンセル</button><button class="primary" id="saveShift">登録</button></div>`);$('#cancel').onclick=closeModal;$('#saveShift').onclick=()=>{const d=$('#shiftDate').value;state.shifts[d]=$('#shiftType').value;reconcileDate(d);closeModal();render();toast('シフトを登録しました')}}
 function openShiftTypeEdit(id){const s=state.shiftTypes.find(x=>x.id===id);openModal(`<h2>シフト種類を編集</h2><div class="field"><label>名称</label><input id="stName" value="${esc(s.name)}"></div><div class="grid2"><div class="field"><label>開始</label><input type="time" id="stStart" value="${s.start}"></div><div class="field"><label>終了</label><input type="time" id="stEnd" value="${s.end}"></div></div><div class="field"><label>表示色</label><input type="color" id="stColor" value="${s.color}"></div><button class="primary" id="saveST" style="width:100%">保存</button>`);$('#saveST').onclick=()=>{s.name=$('#stName').value.trim();s.start=$('#stStart').value;s.end=$('#stEnd').value;s.color=$('#stColor').value;save();closeModal();render();toast('保存しました')}}
