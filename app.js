@@ -1,7 +1,7 @@
 'use strict';
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const STORE='worknote_state_v1';
-const APP_VERSION='28.0.0';
+const APP_VERSION='28.1.0';
 const REPORT_DRAFT_STORE='worknote_report_drafts_v1';
 const GEMINI_KEY_STORE='worknote_gemini_api_key_v1';
 const V15_CLEANUP_STORE='worknote_v15_cleanup_done';
@@ -161,34 +161,58 @@ function monthlyGoalFor(key,date=isoDate(new Date())){const all=loadMonthlyGoals
 function monthlyActualFor(key,date=isoDate(new Date())){const reports=performanceReportsForMonth(monthKey(date));return reports.reduce((sum,n)=>sum+Number(n.reportData?.metrics?.[key]||0),0)}
 function monthlyProgressData(date=isoDate(new Date())){return PERFORMANCE_FIELDS.map(([key,label])=>{const goal=monthlyGoalFor(key,date),actual=monthlyActualFor(key,date),remain=Math.max(0,goal-actual),rate=goal>0?Math.round(actual/goal*100):0;return{key,label,goal,actual,remain,rate}})}
 function remainingWorkDaysEstimate(date=isoDate(new Date())){
- const d=new Date(date+'T12:00:00'),y=d.getFullYear(),m=d.getMonth(),last=new Date(y,m+1,0).getDate();
- let registered=0,work=0;
- for(let day=d.getDate();day<=last;day++){
+ const start=new Date(date+'T12:00:00');
+ const y=start.getFullYear(),m=start.getMonth(),lastDay=new Date(y,m+1,0).getDate();
+ let workDays=0,registeredDays=0,unknownDays=0;
+ for(let day=start.getDate();day<=lastDay;day++){
   const cur=new Date(y,m,day),iso=isoDate(cur),shift=shiftByDate(iso);
-  if(shift){registered++;if(isWorkShift(shift))work++}
+  if(!shift){unknownDays++;continue}
+  registeredDays++;
+  if(isWorkShift(shift))workDays++
  }
- if(registered>0)return Math.max(1,work);
- return Math.max(1,last-d.getDate()+1)
+ return {workDays,registeredDays,unknownDays,complete:unknownDays===0}
 }
-function monthlyPaceSignals(date=isoDate(new Date())){const days=remainingWorkDaysEstimate(date);return monthlyProgressData(date).filter(x=>x.goal>0&&x.actual<x.goal).map(x=>({...x,neededPerDay:x.remain/days})).sort((a,b)=>(b.remain/b.goal)-(a.remain/a.goal))}
+function monthlyPaceSignals(date=isoDate(new Date())){
+ const wd=remainingWorkDaysEstimate(date);
+ return monthlyProgressData(date)
+  .filter(x=>x.goal>0&&x.actual<x.goal)
+  .map(x=>({...x,workDays:wd.workDays,shiftComplete:wd.complete,unknownDays:wd.unknownDays,neededPerDay:wd.workDays>0?x.remain/wd.workDays:null}))
+  .sort((a,b)=>(b.remain/b.goal)-(a.remain/a.goal))
+}
 
 function metricProgressDetail(key,date=isoDate(new Date())){
  const field=PERFORMANCE_FIELDS.find(([k])=>k===key);
  if(!field)return null;
  const [,label]=field;
- const goal=monthlyGoalFor(key,date),actual=monthlyActualFor(key,date),remain=Math.max(0,goal-actual),workDays=remainingWorkDaysEstimate(date),needed=workDays>0?remain/workDays:remain,rate=goal>0?Math.round(actual/goal*100):0;
- const reports=performanceReportsForMonth(monthKey(date)).filter(n=>metricNumber(n.reportData?.metrics?.[key])!==0).sort((a,b)=>b.date.localeCompare(a.date));
- return {key,label,goal,actual,remain,workDays,needed,rate,reports}
+ const month=monthKey(date);
+ const monthStart=`${month}-01`;
+ const today=isoDate(new Date());
+ const calcDate=today.slice(0,7)===month?today:monthStart;
+ const goal=monthlyGoalFor(key,monthStart);
+ const actual=monthlyActualFor(key,monthStart);
+ const remain=Math.max(0,goal-actual);
+ const wd=remainingWorkDaysEstimate(calcDate);
+ const needed=wd.workDays>0?remain/wd.workDays:null;
+ const rate=goal>0?Math.round(actual/goal*100):0;
+ const reports=performanceReportsForMonth(month)
+  .filter(n=>metricNumber(n.reportData?.metrics?.[key])!==0)
+  .sort((a,b)=>b.date.localeCompare(a.date));
+ return {key,label,goal,actual,remain,rate,reports,month,workDays:wd.workDays,shiftComplete:wd.complete,unknownDays:wd.unknownDays,needed}
 }
 function metricNeedLabel(key,value){
+ if(value==null||!Number.isFinite(Number(value)))return '計算不可';
  if(key==='paidSupport'||key==='plusOne')return `${Math.ceil(value).toLocaleString('ja-JP')}円 / 出勤`;
  return `${Number(value).toLocaleString('ja-JP',{maximumFractionDigits:2})} / 出勤`
 }
 function openMetricProgressDetail(key,date=isoDate(new Date())){
  const d=metricProgressDetail(key,date);
  if(!d)return toast('実績項目が見つかりません');
- openModal(`<div class="viewer-head"><button class="secondary" id="backMetricDetail">‹ 実績管理</button><button class="secondary" id="closeMetricDetail">閉じる</button></div><article class="performance-dashboard metric-detail"><header class="performance-head"><span class="tag">目標進捗</span><h1>${esc(d.label)}</h1><p>${esc(monthKey(date).replace('-','年'))}月</p></header><section class="metric-hero"><span>1出勤あたり必要</span><strong>${esc(metricNeedLabel(d.key,d.needed))}</strong><small>現在の残り目標 ÷ 残り出勤日</small></section><section class="metric-detail-grid"><div class="card"><span>月目標</span><strong>${esc(performanceFormat(d.key,d.goal))}</strong></div><div class="card"><span>現在実績</span><strong>${esc(performanceFormat(d.key,d.actual))}</strong></div><div class="card"><span>残り</span><strong>${esc(performanceFormat(d.key,d.remain))}</strong></div><div class="card"><span>残り出勤日</span><strong>${d.workDays}日</strong></div></section><section class="section"><div class="section-head"><h2>達成率</h2><strong>${d.rate}%</strong></div><div class="metric-detail-progress"><i style="width:${Math.min(100,Math.max(0,d.rate))}%"></i></div></section><section class="section"><div class="section-head"><h2>直近の実績</h2></div>${d.reports.slice(0,8).map(n=>`<button class="card metric-history-row" data-metric-report="${n.id}"><span>${esc(n.date.replaceAll('-','/'))}</span><strong>${esc(performanceFormat(d.key,n.reportData?.metrics?.[d.key]||0))}</strong><b>›</b></button>`).join('')||'<div class="empty">この項目の実績はまだありません</div>'}</section></article>`,'note-viewer');
- $('#backMetricDetail').onclick=()=>openPerformanceDashboard(monthKey(date));
+ const calcText=d.workDays>0?metricNeedLabel(d.key,d.needed):'計算不可';
+ const shiftNote=d.shiftComplete
+  ?`今月の残り出勤日 ${d.workDays}日で計算`
+  :`今月の残りシフトに未登録日が${d.unknownDays}日あります。未登録日は出勤扱いせず計算しています。`;
+ openModal(`<div class="viewer-head"><button class="secondary" id="backMetricDetail">‹ 実績管理</button><button class="secondary" id="closeMetricDetail">閉じる</button></div><article class="performance-dashboard metric-detail"><header class="performance-head"><span class="tag">目標進捗</span><h1>${esc(d.label)}</h1><p>${esc(d.month.replace('-','年'))}月</p></header><section class="metric-hero"><span>1出勤あたり必要</span><strong>${esc(calcText)}</strong><small>${esc(shiftNote)}</small></section><section class="metric-detail-grid"><div class="card"><span>月目標</span><strong>${esc(performanceFormat(d.key,d.goal))}</strong></div><div class="card"><span>現在実績</span><strong>${esc(performanceFormat(d.key,d.actual))}</strong></div><div class="card"><span>残り</span><strong>${esc(performanceFormat(d.key,d.remain))}</strong></div><div class="card"><span>残り出勤日</span><strong>${d.workDays}日</strong><small>${d.shiftComplete?'登録済みシフトのみ':'未登録日あり'}</small></div></section><section class="section"><div class="section-head"><h2>達成率</h2><strong>${d.rate}%</strong></div><div class="metric-detail-progress"><i style="width:${Math.min(100,Math.max(0,d.rate))}%"></i></div></section><section class="section"><div class="section-head"><h2>直近の実績</h2></div>${d.reports.slice(0,8).map(n=>`<button class="card metric-history-row" data-metric-report="${n.id}"><span>${esc(n.date.replaceAll('-','/'))}</span><strong>${esc(performanceFormat(d.key,n.reportData?.metrics?.[d.key]||0))}</strong><b>›</b></button>`).join('')||'<div class="empty">この項目の実績はまだありません</div>'}</section></article>`,'note-viewer');
+ $('#backMetricDetail').onclick=()=>openPerformanceDashboard(d.month);
  $('#closeMetricDetail').onclick=closeModal;
  $$('[data-metric-report]').forEach(b=>b.onclick=()=>{const n=state.notes.find(x=>x.id===b.dataset.metricReport);if(n)openReportViewer(n)})
 }
@@ -205,7 +229,12 @@ function staleStaffRecords(date=isoDate(new Date()),days=7){const now=new Date(d
 function localInsights(date=isoDate(new Date())){
  const out=[];
  const pace=monthlyPaceSignals(date)[0];
- if(pace)out.push({type:'pace',icon:'📉',title:`${pace.label} 月目標ペース`,text:`${formatPerformanceValue(pace.key,pace.actual)} / ${formatPerformanceValue(pace.key,pace.goal)}。残り${formatPerformanceValue(pace.key,pace.remain)}、出勤目安1日あたり${formatPerformanceValue(pace.key,pace.neededPerDay)}必要。`,action:'metric',key:pace.key});
+ if(pace){
+  const paceText=pace.workDays>0&&pace.neededPerDay!=null
+   ?`${formatPerformanceValue(pace.key,pace.actual)} / ${formatPerformanceValue(pace.key,pace.goal)}。残り${formatPerformanceValue(pace.key,pace.remain)}、残り出勤${pace.workDays}日で1出勤あたり${formatPerformanceValue(pace.key,pace.neededPerDay)}必要。`
+   :`${formatPerformanceValue(pace.key,pace.actual)} / ${formatPerformanceValue(pace.key,pace.goal)}。残りシフトが未登録のため、1出勤あたり必要数は計算できません。`;
+  out.push({type:'pace',icon:'📉',title:`${pace.label} 月目標ペース`,text:paceText,action:'metric',key:pace.key});
+ }
  const overdue=overdueTasks(date);
  if(overdue.length)out.push({type:'task',icon:'⏰',title:'期限超過タスク',text:`未完了が${overdue.length}件あります。最古は「${[...overdue].sort((a,b)=>a.date.localeCompare(b.date))[0].title}」。`,action:'tasks'});
  const stale=staleStaffRecords(date)[0];
