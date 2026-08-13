@@ -1,3 +1,15 @@
+# WORKNOTE v31.3 — 日報Gemini分析・完全再修正版
+
+- 今回アップロードされたv31.2を直接修正。CARD SCORE連携を維持。
+- 日報AI schemaを軽量化し、ROLEUP推薦は内部で正規化。
+- responseSchemaで失敗しても、同じモデルでschemaなしJSONへ自動フォールバック。
+- モデル利用不可時は 3.5 Flash-Lite / 3.6 Flash / 3.5 Flash / 3.1 Flash-Lite を自動切替。
+- 既定モデルをGemini 3.5 Flash-Liteへ更新。
+- 429/503は自動再試行。
+- JSONコードフェンスや前後の余計な文字を復旧。
+- 初回分析失敗も日報内に理由を表示し、その場で再分析可能。
+- 日報保存自体はAI失敗に巻き込まれない。
+
 # WORKNOTE v31.2 — CARD SCORE連携・マネ活日報対応
 
 ## 今回の主な更新

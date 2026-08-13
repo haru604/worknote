@@ -1,14 +1,14 @@
 'use strict';
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const STORE='worknote_state_v1';
-const APP_VERSION='31.2.0';
+const APP_VERSION='31.3.0';
 const REPORT_DRAFT_STORE='worknote_report_drafts_v1';
 const CARD_SCORE_BRIDGE_KEY='worknote_cardscore_daily_v1';
 const CARD_SCORE_DB_KEY='aupay_v2';
 const CARD_SCORE_HISTORY_IMPORT_KEY='worknote_cardscore_history_import_v1';
 const GEMINI_KEY_STORE='worknote_gemini_api_key_v1';
 const V15_CLEANUP_STORE='worknote_v15_cleanup_done';
-const DEFAULT_GEMINI_MODEL='gemini-3.1-flash-lite';
+const DEFAULT_GEMINI_MODEL='gemini-3.5-flash-lite';
 const pad=n=>String(n).padStart(2,'0');
 const isoDate=d=>`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 const uid=()=>crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2);
@@ -54,7 +54,7 @@ let state=load();
 state.settings=Object.assign({},clone(DEFAULT.settings),state.settings||{});
 state.trash=state.trash||[];
 state.staff=Object.assign({members:[],goals:{},followups:[]},state.staff||{});state.staff.members=state.staff.members||[];state.staff.goals=state.staff.goals||{};state.staff.followups=state.staff.followups||[];
-state.ai=Object.assign({},clone(DEFAULT.ai),state.ai||{});state.ai.chat=state.ai.chat||[];state.ai.rules=state.ai.rules||[];state.ai.staffInsights=state.ai.staffInsights||{};state.ai.mentor=Object.assign({issues:{},weeklyReviews:[],monthlyReports:[],lastWeeklyAt:'',memories:[],roleupTasks:[]},state.ai.mentor||{});state.ai.mentor.issues=state.ai.mentor.issues||{};state.ai.mentor.weeklyReviews=state.ai.mentor.weeklyReviews||[];state.ai.mentor.monthlyReports=Array.isArray(state.ai.mentor.monthlyReports)?state.ai.mentor.monthlyReports:[];state.ai.mentor.roleupTasks=Array.isArray(state.ai.mentor.roleupTasks)?state.ai.mentor.roleupTasks:[];state.ai.mentor.memories=Array.isArray(state.ai.mentor.memories)?state.ai.mentor.memories:[];delete state.ai.inbox;delete state.ai.weekly;delete state.ai.lastDigestKey;delete state.ai.lastRun;delete state.ai.automationLevel;delete state.ai.enabled;if(state.ai.mode==='openai'||state.ai.mode==='gemini')state.ai.mode='geminiDirect';state.ai.model=state.ai.model||DEFAULT_GEMINI_MODEL;
+state.ai=Object.assign({},clone(DEFAULT.ai),state.ai||{});state.ai.chat=state.ai.chat||[];state.ai.rules=state.ai.rules||[];state.ai.staffInsights=state.ai.staffInsights||{};state.ai.mentor=Object.assign({issues:{},weeklyReviews:[],monthlyReports:[],lastWeeklyAt:'',memories:[],roleupTasks:[]},state.ai.mentor||{});state.ai.mentor.issues=state.ai.mentor.issues||{};state.ai.mentor.weeklyReviews=state.ai.mentor.weeklyReviews||[];state.ai.mentor.monthlyReports=Array.isArray(state.ai.mentor.monthlyReports)?state.ai.mentor.monthlyReports:[];state.ai.mentor.roleupTasks=Array.isArray(state.ai.mentor.roleupTasks)?state.ai.mentor.roleupTasks:[];state.ai.mentor.memories=Array.isArray(state.ai.mentor.memories)?state.ai.mentor.memories:[];delete state.ai.inbox;delete state.ai.weekly;delete state.ai.lastDigestKey;delete state.ai.lastRun;delete state.ai.automationLevel;delete state.ai.enabled;if(state.ai.mode==='openai'||state.ai.mode==='gemini')state.ai.mode='geminiDirect';state.ai.model=state.ai.model||DEFAULT_GEMINI_MODEL;if(state.ai.model==='gemini-3.1-flash-lite')state.ai.model=DEFAULT_GEMINI_MODEL;
 state.notes.forEach(n=>{if(n.type==='fixed'||n.type==='report')n.type='normal'});
 if(!localStorage.getItem(V15_CLEANUP_STORE)){const today=isoDate(new Date());state.tasks=state.tasks.filter(t=>!t.date||t.date>=today);localStorage.setItem(V15_CLEANUP_STORE,'1')}
 migrateStaffMaster();save();
@@ -521,7 +521,7 @@ function reportText(data){
 function reportTitleForDate(date){const d=new Date(date+'T12:00:00');return `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日 日報`}
 function reportFeedbackHTML(n){
  const a=n.aiFeedback;
- if(!a)return `<section class="daily-ai-feedback"><div class="daily-ai-title"><span>AI副店長メンター</span><strong>1日の育成フィードバック</strong></div><div class="empty">まだAIフィードバックはありません。</div><button class="secondary" id="retryDailyFeedback">Geminiでメンター分析を生成</button></section>`;
+ if(!a)return `<section class="daily-ai-feedback"><div class="daily-ai-title"><span>AI副店長メンター</span><strong>1日の育成フィードバック</strong></div>${n.aiFeedbackError?`<div class="mentor-ai-error"><strong>AI分析できませんでした</strong><p>${esc(n.aiFeedbackError)}</p></div>`:'<div class="empty">まだAIフィードバックはありません。</div>'}<button class="secondary" id="retryDailyFeedback">${n.aiFeedbackError?'もう一度AI分析':'Geminiでメンター分析を生成'}</button></section>`;
  if(!a.mentorVersion){
   return `<section class="daily-ai-feedback"><div class="daily-ai-title"><span>AI副店長メンター</span><strong>旧フィードバック</strong></div>${a.workMode==='holiday'?`<div class="feedback-block holiday-feedback"><span>休日モード</span><p>今日は勤務評価ではなく、自己成長・訓練・振り返りを中心に評価しています。</p></div>${a.holidayLearningEvaluation?`<div class="feedback-block holiday-learning"><span>休日の学び・訓練評価</span><p>${displayMultiline(a.holidayLearningEvaluation)}</p></div>`:''}`:''}
   <div class="feedback-block"><span>総合評価</span><p>${displayMultiline(a.overall||'')}</p></div><div class="feedback-block goal-eval"><span>今日の目標 → 結果</span><p>${displayMultiline(a.goalEvaluation||'')}</p></div><div class="feedback-block"><span>数字への評価</span><p>${displayMultiline(a.numbers||'')}</p></div><div class="feedback-block strict"><span>改善すべき点</span><p>${displayMultiline(a.issues||'')}</p></div><button class="primary" id="retryDailyFeedback">新しいAIメンターで再分析</button></section>`
@@ -601,7 +601,7 @@ function openQuickNote(existing=null){
   if(type==='dailyReport'){const data=collectReportEditorData();REPORT_FIELDS.forEach(([k])=>data[k]=(data[k]||'').trim());data.storeAction=(data.storeAction||'').trim();data.resultComment=(data.resultComment||'').trim();data.next=(data.next||[]).map(x=>x.trim());if(metricNumber(data.metrics?.deviceChangeMane)>metricNumber(data.metrics?.deviceChange))return toast('機種変更のマネ活件数は機種変更件数以下にしてください');if(metricNumber(data.metrics?.cellUpMane)>metricNumber(data.metrics?.cellUp))return toast('セルアップのマネ活件数はセルアップ件数以下にしてください');if(metricNumber(data.metrics?.gold)>metricNumber(data.metrics?.card))return toast('GOLD枚数はクレカ合計枚数以下にしてください');data.sellNaviSnapshot=workModeForDate(date).isHoliday?(existing?.reportData?.sellNaviSnapshot||null):(sellNaviSnapshotForDate(date)||existing?.reportData?.sellNaviSnapshot||null);const title=$('#reportTitle').value.trim()||reportTitleForDate(date),text=reportText(data);if(existing){existing.title=title;existing.text=text;existing.type=type;existing.date=date;existing.reportData=data;existing.staff='';existing.staffId='';existing.staffIds=[];existing.updatedAt=nowISO();savedDailyReport=existing}else{savedDailyReport={id:uid(),title,text,type,date,reportData:data,staff:'',staffId:'',staffIds:[],pinned:false,archived:false,createdAt:nowISO(),updatedAt:nowISO()};state.notes.push(savedDailyReport)}clearReportDraft(date);if(data.addTomorrowTasks){addedCount=data.next.filter(Boolean).length;const d=new Date(date+'T12:00:00');d.setDate(d.getDate()+1);const tomorrow=isoDate(d);data.next.filter(Boolean).forEach(title=>{if(!state.tasks.some(t=>t.date===tomorrow&&t.title===title))state.tasks.push({id:uid(),title,date:tomorrow,done:false,createdAt:nowISO(),auto:false,timing:'終日',priority:'中'})})}}
   else if(type==='meeting'){const m=collectMeetingEditorData();if(!m.title.trim())return toast('MTGタイトルを入力してください');if(!m.rawMemo.trim())return toast('MTGメモを入力してください');const target=existing||{id:uid(),createdAt:nowISO(),pinned:false,archived:false};const aiMinutes=existing?.meetingData?.aiMinutes||null;Object.assign(target,{title:m.title.trim(),text:aiMinutes?.summary||m.rawMemo,type:'meeting',date,meetingData:{...m,aiMinutes},staff:'',staffId:'',staffIds:[],updatedAt:nowISO()});if(!existing)state.notes.push(target);localStorage.removeItem('worknote_meeting_draft_'+date);save();closeModal();render();toast('MTGメモを保存しました');setTimeout(()=>openMeetingViewer(target),50);return;}
   else{const text=($('#quickText')?.value||'').trim(),staffIds=selectedStaffIdsFromEditor();if(!text)return toast('内容を入力してください');if(type==='staff'&&!staffIds.length)return toast('スタッフを1名以上選択してください');const names=staffIds.map(id=>staffMemberById(id)?.name).filter(Boolean);if(existing){existing.title='';existing.text=text;delete existing.richHTML;existing.type=type;existing.date=date;existing.staffIds=staffIds;existing.staffId=staffIds[0]||'';existing.staff=names.join('・');existing.confirmed=type==='inbox'?(existing.confirmed??false):undefined;existing.updatedAt=nowISO();delete existing.reportData;delete existing.meetingData}else{state.notes.push({id:uid(),text,type,date,staffIds,staffId:staffIds[0]||'',staff:names.join('・'),confirmed:type==='inbox'?false:undefined,pinned:false,archived:false,createdAt:nowISO(),updatedAt:nowISO()})}clearSimpleDraft(existing,type,date);}
-  save();closeModal();render();if(addedCount)toast(`日報を保存し、明日のタスクを${addedCount}件登録しました`,'明日のタスクを見る',()=>{const d=new Date(date+'T12:00:00');d.setDate(d.getDate()+1);selectedDate=isoDate(d);switchView('calendar')},5000);else toast(type==='dailyReport'?'日報を保存しました':'メモを保存しました');if(savedDailyReport&&state.ai.mode==='geminiDirect'&&getGeminiApiKey()){toast('日報を保存しました・Geminiが1日を評価中…','',null,3500);try{await requestDailyReportFeedback(savedDailyReport);toast('Geminiの厳しいフィードバックを保存しました')}catch(e){state.ai.lastError=e.message||'日報フィードバックに失敗しました';save();toast('日報は保存済みです・Gemini評価のみ失敗しました')}}};
+  save();closeModal();render();if(addedCount)toast(`日報を保存し、明日のタスクを${addedCount}件登録しました`,'明日のタスクを見る',()=>{const d=new Date(date+'T12:00:00');d.setDate(d.getDate()+1);selectedDate=isoDate(d);switchView('calendar')},5000);else toast(type==='dailyReport'?'日報を保存しました':'メモを保存しました');if(savedDailyReport&&state.ai.mode==='geminiDirect'&&getGeminiApiKey()){toast('日報を保存しました・Geminiが1日を評価中…','',null,3500);try{await requestDailyReportFeedback(savedDailyReport);toast('Geminiの厳しいフィードバックを保存しました')}catch(e){const msg=friendlyGeminiError(e,e?.status||0);savedDailyReport.aiFeedbackError=msg;state.ai.lastError=msg;state.ai.connectionStatus='接続失敗';save();toast('日報は保存済みです・AI分析を再試行できます');setTimeout(()=>openReportViewer(savedDailyReport),120)}}};
 
 }
 function eventStartDate(e){return e.startDate||e.date||''}
@@ -992,44 +992,17 @@ function mentorEvaluationBadge(v){
 function latestWeeklyReview(){return (state.ai.mentor?.weeklyReviews||[]).slice().sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''))[0]||null}
 
 const AI_DAILY_FEEDBACK_SCHEMA={type:'OBJECT',properties:{
- workMode:{type:'STRING',enum:['work','holiday','unknown']},
- overall:{type:'STRING'},
- holidayLearningEvaluation:{type:'STRING'},
- previousCommitmentReview:{type:'STRING'},
- goalEvaluation:{type:'STRING'},
- salesEvaluation:{type:'STRING'},
- deputyManagerEvaluation:{type:'STRING'},
- dayManagement:{type:'STRING'},
- numbers:{type:'STRING'},
- staffManagement:{type:'STRING'},
- communicationEvaluation:{type:'STRING'},
- good:{type:'STRING'},
- issues:{type:'STRING'},
- areaRatings:{type:'ARRAY',maxItems:8,items:{type:'OBJECT',properties:{area:{type:'STRING'},grade:{type:'STRING',enum:['◎','○','△','×','？']},reason:{type:'STRING'}},required:['area','grade','reason']}},
- issueDiagnosis:{type:'ARRAY',maxItems:5,items:{type:'OBJECT',properties:{
-  category:{type:'STRING',enum:['知識不足','技術不足','経験不足','習慣不足','優先順位ミス','判断ミス','コミュニケーション不足','自信不足','仕組み不足']},
-  title:{type:'STRING'},evidence:{type:'STRING'},hypothesis:{type:'STRING'},impact:{type:'STRING'},
-  status:{type:'STRING',enum:['新規','継続','改善','卒業']}
- },required:['category','title','evidence','hypothesis','impact','status']}},
- trainingPlan:{type:'ARRAY',maxItems:4,items:{type:'OBJECT',properties:{
-  issueTitle:{type:'STRING'},title:{type:'STRING'},purpose:{type:'STRING'},method:{type:'STRING'},duration:{type:'STRING'},measure:{type:'STRING'},nextLevel:{type:'STRING'}
- },required:['issueTitle','title','purpose','method','duration','measure','nextLevel']}},
- tomorrowActions:{type:'ARRAY',maxItems:4,items:{type:'STRING'}},
- topPriority:{type:'STRING'},
- memoryUpdates:{type:'ARRAY',maxItems:8,items:{type:'OBJECT',properties:{
-  action:{type:'STRING',enum:['upsert','archive']},
-  key:{type:'STRING'},
-  category:{type:'STRING',enum:['店舗目標','今週の重点','店長指示','長期方針','自分のルール','スタッフ育成方針','店舗ルール','その他']},
-  scope:{type:'STRING',enum:['month','week','ongoing','date_range']},
-  content:{type:'STRING'},priority:{type:'STRING',enum:['high','medium','low']},
-  certainty:{type:'STRING',enum:['confirmed','tentative']},
-  startDate:{type:'STRING'},endDate:{type:'STRING'}
- },required:['action','key','category','scope','content','priority','certainty','startDate','endDate']}},
- roleupTask:{type:'OBJECT',properties:{
-  shouldAssign:{type:'BOOLEAN'},title:{type:'STRING'},reason:{type:'STRING'},focus:{type:'STRING'},productId:{type:'STRING'},difficulty:{type:'STRING',enum:['auto','level1','level2','level3']}
- },required:['shouldAssign','title','reason','focus','productId','difficulty']},
- mentorComment:{type:'STRING'}
-},required:['workMode','overall','holidayLearningEvaluation','previousCommitmentReview','goalEvaluation','salesEvaluation','deputyManagerEvaluation','dayManagement','numbers','staffManagement','communicationEvaluation','good','issues','areaRatings','issueDiagnosis','trainingPlan','tomorrowActions','topPriority','memoryUpdates','roleupTask','mentorComment']};
+ workMode:{type:'STRING'},overall:{type:'STRING'},holidayLearningEvaluation:{type:'STRING'},
+ previousCommitmentReview:{type:'STRING'},goalEvaluation:{type:'STRING'},salesEvaluation:{type:'STRING'},
+ deputyManagerEvaluation:{type:'STRING'},dayManagement:{type:'STRING'},numbers:{type:'STRING'},
+ staffManagement:{type:'STRING'},communicationEvaluation:{type:'STRING'},good:{type:'STRING'},issues:{type:'STRING'},
+ areaRatings:{type:'ARRAY',items:{type:'OBJECT',properties:{area:{type:'STRING'},grade:{type:'STRING'},reason:{type:'STRING'}},required:['area','grade','reason']}},
+ issueDiagnosis:{type:'ARRAY',items:{type:'OBJECT',properties:{category:{type:'STRING'},title:{type:'STRING'},evidence:{type:'STRING'},hypothesis:{type:'STRING'},impact:{type:'STRING'},status:{type:'STRING'}},required:['category','title','evidence','hypothesis','impact','status']}},
+ trainingPlan:{type:'ARRAY',items:{type:'OBJECT',properties:{issueTitle:{type:'STRING'},title:{type:'STRING'},purpose:{type:'STRING'},method:{type:'STRING'},duration:{type:'STRING'},measure:{type:'STRING'},nextLevel:{type:'STRING'}},required:['issueTitle','title','purpose','method','duration','measure','nextLevel']}},
+ tomorrowActions:{type:'ARRAY',items:{type:'STRING'}},topPriority:{type:'STRING'},
+ memoryUpdates:{type:'ARRAY',items:{type:'OBJECT',properties:{action:{type:'STRING'},key:{type:'STRING'},category:{type:'STRING'},scope:{type:'STRING'},content:{type:'STRING'},priority:{type:'STRING'},certainty:{type:'STRING'},startDate:{type:'STRING'},endDate:{type:'STRING'}},required:['action','key','category','scope','content','priority','certainty','startDate','endDate']}},
+ roleupShouldAssign:{type:'BOOLEAN'},roleupTitle:{type:'STRING'},roleupReason:{type:'STRING'},roleupFocus:{type:'STRING'},roleupProductId:{type:'STRING'},roleupDifficulty:{type:'STRING'},mentorComment:{type:'STRING'}
+},required:['workMode','overall','holidayLearningEvaluation','previousCommitmentReview','goalEvaluation','salesEvaluation','deputyManagerEvaluation','dayManagement','numbers','staffManagement','communicationEvaluation','good','issues','areaRatings','issueDiagnosis','trainingPlan','tomorrowActions','topPriority','memoryUpdates','roleupShouldAssign','roleupTitle','roleupReason','roleupFocus','roleupProductId','roleupDifficulty','mentorComment']};
 async function requestDailyReportFeedback(n){
  if(state.ai.mode!=='geminiDirect'||!getGeminiApiKey())throw Error('Gemini直接接続を設定してください');
  const data=n.reportData||{},date=n.date||isoDate(new Date()),selfText=selfOnlyReportText(data),metrics=data.metrics||{};
@@ -1106,10 +1079,16 @@ async function requestDailyReportFeedback(n){
 
 【ROLEUP訓練判断】
 - recentRoleup は直近のロープレ結果です。前日にROLEUPを実施していれば、点数だけでなく improve / advice / breakdown を今日のフィードバックへ反映してください。
-- 日報の課題が「知識を読むだけ」ではなく、接客会話・質問・説明・クロージング・切り返しなど実践練習で改善すべき場合だけ roleupTask.shouldAssign=true にしてください。
+- 日報の課題が「知識を読むだけ」ではなく、接客会話・質問・説明・クロージング・切り返しなど実践練習で改善すべき場合だけ roleupShouldAssign=true にしてください。
 - ROLEUP課題は毎日無理に出さないでください。1つの重点課題に絞ってください。
 - productId は device/pixel/money/uq/electric/hikari/support/tablet の中から最も近いもの。難易度は通常 auto、既に同テーマを反復している場合のみ level2/level3 を検討。
 - 直近ROLEUPで改善した課題は、次は実商談での定着確認を優先し、同じロープレを惰性的に繰り返させないでください。
+
+【ROLEUP出力】
+- roleupShouldAssign は実践ロープレが必要な時だけ true。
+- roleupTitle / roleupReason / roleupFocus は不要なら空文字。
+- roleupProductId は device/pixel/money/uq/electric/hikari/support/tablet のいずれか。迷えば device。
+- roleupDifficulty は auto/level1/level2/level3 のいずれか。通常は auto。
 
 【出力モード】
 - workMode.mode='holiday' の場合、出力 workMode は必ず holiday。
@@ -1120,11 +1099,23 @@ async function requestDailyReportFeedback(n){
 
 【今日の入力】
 ${JSON.stringify(payload)}`;
- const d=await callGeminiDirect({schema:AI_DAILY_FEEDBACK_SCHEMA,input:prompt});
- n.aiFeedback={...d,mentorVersion:2,updatedAt:nowISO()};delete n.aiFeedbackError;
+ let d;
+ try{d=await callGeminiDirect({schema:AI_DAILY_FEEDBACK_SCHEMA,input:prompt})}
+ catch(e){const msg=friendlyGeminiError(e,e?.status||0);n.aiFeedbackError=msg;state.ai.connectionStatus='接続失敗';state.ai.lastError=msg;save();throw e}
+ const normalized={...d,roleupTask:{
+  shouldAssign:!!d.roleupShouldAssign,title:String(d.roleupTitle||''),reason:String(d.roleupReason||''),focus:String(d.roleupFocus||''),
+  productId:['device','pixel','money','uq','electric','hikari','support','tablet'].includes(d.roleupProductId)?d.roleupProductId:'device',
+  difficulty:['auto','level1','level2','level3'].includes(d.roleupDifficulty)?d.roleupDifficulty:'auto'
+ }};
+ normalized.areaRatings=Array.isArray(normalized.areaRatings)?normalized.areaRatings.slice(0,8):[];
+ normalized.issueDiagnosis=Array.isArray(normalized.issueDiagnosis)?normalized.issueDiagnosis.slice(0,5):[];
+ normalized.trainingPlan=Array.isArray(normalized.trainingPlan)?normalized.trainingPlan.slice(0,4):[];
+ normalized.tomorrowActions=Array.isArray(normalized.tomorrowActions)?normalized.tomorrowActions.slice(0,4):[];
+ normalized.memoryUpdates=Array.isArray(normalized.memoryUpdates)?normalized.memoryUpdates.slice(0,8):[];
+ n.aiFeedback={...normalized,mentorVersion:4,updatedAt:nowISO()};delete n.aiFeedbackError;
  updateMentorStateFromFeedback(n,n.aiFeedback);
  applyMentorMemoryUpdates(n.aiFeedback.memoryUpdates||[],date);
- state.ai.connectionStatus='接続済み';state.ai.lastError='';save();return d
+ state.ai.connectionStatus='接続済み';state.ai.lastError='';save();return normalized
 }
 
 
@@ -1221,40 +1212,66 @@ function openWeeklyMentorReview(){
 
 
 function friendlyGeminiError(err,status=0){
- const raw=String(err?.message||err||'');
- const low=raw.toLowerCase();
- if(status===429||low.includes('resource_exhausted')||low.includes('quota'))return 'Geminiの利用が集中しているか、利用上限に達しています。少し時間を置いてから再試行してください。';
- if(status===503||low.includes('high demand')||low.includes('overloaded')||low.includes('unavailable'))return '現在Geminiが混雑しています。一時的なものなので、少し時間を置いて再試行してください。';
+ const raw=String(err?.message||err||'').trim(),low=raw.toLowerCase();
+ if(status===429||low.includes('resource_exhausted')||low.includes('quota'))return 'Geminiの利用上限または混雑です。少し時間を置いて再試行してください。';
+ if(status===503||low.includes('high demand')||low.includes('overloaded')||low.includes('unavailable'))return '現在Geminiが混雑しています。少し時間を置いて再試行してください。';
  if(status===401||status===403||low.includes('api key')||low.includes('permission'))return 'Gemini APIキーまたは接続権限を確認してください。';
- if(low.includes('failed to fetch')||low.includes('network'))return 'Geminiへ接続できませんでした。通信状態を確認して再試行してください。';
- if(low.includes('json'))return 'Geminiの回答形式を読み取れませんでした。もう一度再分析してください。';
- return raw&&raw.length<180?raw:'Geminiの処理に失敗しました。少し時間を置いて再試行してください。'
+ if(status===404||low.includes('not found'))return '設定中のGeminiモデルを利用できません。WORKNOTEが対応モデルへ自動切替します。';
+ if(status===400||low.includes('invalid argument')||low.includes('schema'))return 'Geminiの構造化出力でエラーが発生しました。WORKNOTEが簡易JSON方式へ自動切替します。';
+ if(low.includes('failed to fetch')||low.includes('network'))return 'Geminiへ接続できませんでした。通信状態を確認してください。';
+ if(low.includes('json'))return 'GeminiのJSON回答を読み取れませんでした。';
+ return raw&&raw.length<260?raw:'Geminiの処理に失敗しました。もう一度再試行してください。'
 }
 function sleep(ms){return new Promise(r=>setTimeout(r,ms))}
 
+function parseGeminiJsonText(text){
+ let raw=String(text||'').trim();
+ raw=raw.replace(/^```(?:json)?\s*/i,'').replace(/\s*```$/,'').trim();
+ try{return JSON.parse(raw)}catch{}
+ const first=raw.indexOf('{'),last=raw.lastIndexOf('}');
+ if(first>=0&&last>first){try{return JSON.parse(raw.slice(first,last+1))}catch{}}
+ throw Error('GeminiのJSON回答を読み取れませんでした。')
+}
 async function callGeminiDirect({input,schema,isChat=false}){
- const apiKey=getGeminiApiKey();if(!apiKey)throw Error('Gemini APIキーが未入力です');
- const model=state.ai.model||DEFAULT_GEMINI_MODEL;
- const url=`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
- let lastErr=null;
- for(let attempt=0;attempt<2;attempt++){
-  try{
-   const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':apiKey},body:JSON.stringify({systemInstruction:{parts:[{text:aiSystemInstruction(isChat)}]},contents:[{role:'user',parts:[{text:input}]}],generationConfig:{responseMimeType:'application/json',responseSchema:schema}})});
-   const data=await res.json().catch(()=>({}));
-   if(!res.ok){
-    const e=Error(friendlyGeminiError(data?.error?.message||`Gemini APIエラー（${res.status}）`,res.status));e.status=res.status;throw e
+ const apiKey=getGeminiApiKey();if(!apiKey){const e=Error('Gemini APIキーが未入力です');e.status=401;throw e}
+ const selected=state.ai.model||DEFAULT_GEMINI_MODEL;
+ const models=[selected,'gemini-3.5-flash-lite','gemini-3.6-flash','gemini-3.5-flash','gemini-3.1-flash-lite'].filter((x,i,a)=>x&&a.indexOf(x)===i);
+ const system=aiSystemInstruction(isChat);let lastErr=null;
+ const run=async(model,useSchema)=>{
+  const url=`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+  const generationConfig={responseMimeType:'application/json',maxOutputTokens:8192};
+  if(useSchema&&schema)generationConfig.responseSchema=schema;
+  const effectiveInput=useSchema?input:`${input}
+
+【出力の絶対条件】
+有効なJSONオブジェクトだけを返してください。MarkdownコードフェンスやJSON前後の説明は禁止です。指定された項目名を保ってください。`;
+  const res=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json','x-goog-api-key':apiKey},body:JSON.stringify({
+   systemInstruction:{parts:[{text:system}]},contents:[{role:'user',parts:[{text:effectiveInput}]}],generationConfig
+  })});
+  const data=await res.json().catch(()=>({}));
+  if(!res.ok){const e=Error(data?.error?.message||`Gemini APIエラー（${res.status}）`);e.status=res.status;e.model=model;e.useSchema=useSchema;throw e}
+  const text=(data?.candidates?.[0]?.content?.parts||[]).map(x=>x.text||'').join('').trim();
+  if(!text){const e=Error('Geminiから回答が返りませんでした');e.status=502;throw e}
+  return parseGeminiJsonText(text)
+ };
+ for(const model of models){
+  for(const useSchema of (schema?[true,false]:[false])){
+   for(let retry=0;retry<2;retry++){
+    try{
+     const result=await run(model,useSchema);
+     if(model!==state.ai.model){state.ai.model=model;save()}
+     return result
+    }catch(e){
+     lastErr=e;
+     const transient=e?.status===429||e?.status===503||/high demand|overloaded|unavailable|resource_exhausted/i.test(String(e.message||''));
+     if(transient&&retry===0){await sleep(1400);continue}
+     if(e?.status===401||e?.status===403){const out=Error(friendlyGeminiError(e,e.status));out.status=e.status;throw out}
+     break
+    }
    }
-   const text=(data?.candidates?.[0]?.content?.parts||[]).map(x=>x.text||'').join('').trim();
-   if(!text)throw Error('Geminiから回答が返りませんでした');
-   try{return JSON.parse(text)}catch{throw Error('Geminiの回答形式を読み取れませんでした。もう一度再分析してください。')}
-  }catch(e){
-   lastErr=e;
-   const transient=e?.status===429||e?.status===503||/混雑|集中|一時的/.test(String(e.message||''));
-   if(attempt===0&&transient){await sleep(1200);continue}
-   throw Error(friendlyGeminiError(e,e?.status||0))
   }
  }
- throw Error(friendlyGeminiError(lastErr,lastErr?.status||0))
+ const out=Error(friendlyGeminiError(lastErr,lastErr?.status||0));out.status=lastErr?.status||0;out.detail=String(lastErr?.message||'');throw out
 }
 function openAIDashboard(){closeModal();switchView('ai')}
 function openAIChat(){
@@ -1288,7 +1305,7 @@ function openAIChat(){
 }
 
 function openAIRules(){openModal(`<h2>AIが覚えているルール</h2>${state.ai.rules.map(x=>`<div class="card rule-memory"><div><span class="tag">${x.scope==='global'?'全体':x.scope==='theme'?'テーマ':'今回'}</span><p>${esc(x.text)}</p></div><button class="danger" data-del-rule="${x.id}">削除</button></div>`).join('')||'<div class="empty">保存されたルールはありません</div>'}<button class="secondary" id="backAI" style="width:100%">戻る</button>`);$('#backAI').onclick=openAIDashboard;$$('[data-del-rule]').forEach(b=>b.onclick=()=>{state.ai.rules=state.ai.rules.filter(x=>x.id!==b.dataset.delRule);save();openAIRules()})}
-function openAISettings(){const hasKey=!!getGeminiApiKey();openModal(`<h2>AI副店長メンター</h2><div class="card"><strong>API利用方針</strong><div class="small">GeminiはAIチャット・カレンダー登録・スタッフ分析更新・接続テスト・日報保存時の育成フィードバック・手動の週次メンター総括で呼び出します。対応候補の自動生成は行いません。</div></div><div class="field"><label>動作モード</label><select id="aiMode"><option value="local">端末内分析（Geminiは手動機能のみ）</option><option value="geminiDirect">Gemini直接接続</option></select></div><div class="field"><label>Gemini APIキー</label><input id="geminiApiKey" type="password" autocomplete="off" placeholder="AIza..." value=""><div class="small">${hasKey?'APIキーはこの端末に保存済みです。変更時だけ再入力してください。':'Google AI Studioで作成したAPIキーを入力してください。'} GitHubには保存されません。</div></div><div class="field"><label>モデル</label><select id="geminiModel"><option value="gemini-3.1-flash-lite">Gemini 3.1 Flash-Lite（推奨）</option><option value="gemini-3.5-flash">Gemini 3.5 Flash</option></select></div><div class="danger-note">直接接続ではAPIキーをこの端末のブラウザ内に保存します。共有端末では使用しないでください。</div><div class="card"><strong>接続状態</strong><div class="small">${esc(state.ai.mode==='geminiDirect'?(state.ai.connectionStatus||'未接続'):'端末内分析')}${state.ai.model?`・${esc(state.ai.model)}`:''}</div>${state.ai.lastError?`<div class="warning">${esc(state.ai.lastError)}</div>`:''}</div><div class="btn-row"><button class="secondary" id="testAIConnection">接続だけテスト</button><button class="primary" id="saveAISettings">保存</button></div>`);$('#aiMode').value=state.ai.mode;$('#geminiModel').value=state.ai.model||DEFAULT_GEMINI_MODEL;const readSettings=()=>{state.ai.mode=$('#aiMode').value;state.ai.model=$('#geminiModel').value;state.ai.endpoint='';const entered=$('#geminiApiKey').value.trim();if(entered)setGeminiApiKey(entered);save()};$('#testAIConnection').onclick=async()=>{readSettings();if(state.ai.mode!=='geminiDirect')return toast('Gemini直接接続を選択してください');if(!getGeminiApiKey())return toast('Gemini APIキーを入力してください');const button=$('#testAIConnection');button.disabled=true;button.textContent='接続確認中…';try{const d=await callGeminiDirect({input:'接続確認として status に ok、message に 接続できました を入れてください。',schema:AI_TEST_SCHEMA});state.ai.connectionStatus='接続済み';state.ai.lastError='';save();toast(d.message||'Geminiへの接続を確認しました');openAISettings()}catch(e){state.ai.connectionStatus='接続失敗';state.ai.lastError=e.message||'接続に失敗しました';save();toast('接続に失敗しました');openAISettings()}};$('#saveAISettings').onclick=()=>{readSettings();if(state.ai.mode==='geminiDirect'&&!getGeminiApiKey())return toast('Gemini APIキーを入力してください');closeModal();render();toast('AI設定を保存しました')}}
+function openAISettings(){const hasKey=!!getGeminiApiKey();openModal(`<h2>AI副店長メンター</h2><div class="card"><strong>API利用方針</strong><div class="small">GeminiはAIチャット・カレンダー登録・スタッフ分析更新・接続テスト・日報保存時の育成フィードバック・手動の週次メンター総括で呼び出します。対応候補の自動生成は行いません。</div></div><div class="field"><label>動作モード</label><select id="aiMode"><option value="local">端末内分析（Geminiは手動機能のみ）</option><option value="geminiDirect">Gemini直接接続</option></select></div><div class="field"><label>Gemini APIキー</label><input id="geminiApiKey" type="password" autocomplete="off" placeholder="AIza..." value=""><div class="small">${hasKey?'APIキーはこの端末に保存済みです。変更時だけ再入力してください。':'Google AI Studioで作成したAPIキーを入力してください。'} GitHubには保存されません。</div></div><div class="field"><label>モデル</label><select id="geminiModel"><option value="gemini-3.5-flash-lite">Gemini 3.5 Flash-Lite（推奨）</option><option value="gemini-3.6-flash">Gemini 3.6 Flash</option><option value="gemini-3.5-flash">Gemini 3.5 Flash</option><option value="gemini-3.1-flash-lite">Gemini 3.1 Flash-Lite</option></select></div><div class="danger-note">直接接続ではAPIキーをこの端末のブラウザ内に保存します。共有端末では使用しないでください。</div><div class="card"><strong>接続状態</strong><div class="small">${esc(state.ai.mode==='geminiDirect'?(state.ai.connectionStatus||'未接続'):'端末内分析')}${state.ai.model?`・${esc(state.ai.model)}`:''}</div>${state.ai.lastError?`<div class="warning">${esc(state.ai.lastError)}</div>`:''}</div><div class="btn-row"><button class="secondary" id="testAIConnection">接続だけテスト</button><button class="primary" id="saveAISettings">保存</button></div>`);$('#aiMode').value=state.ai.mode;$('#geminiModel').value=state.ai.model||DEFAULT_GEMINI_MODEL;const readSettings=()=>{state.ai.mode=$('#aiMode').value;state.ai.model=$('#geminiModel').value;state.ai.endpoint='';const entered=$('#geminiApiKey').value.trim();if(entered)setGeminiApiKey(entered);save()};$('#testAIConnection').onclick=async()=>{readSettings();if(state.ai.mode!=='geminiDirect')return toast('Gemini直接接続を選択してください');if(!getGeminiApiKey())return toast('Gemini APIキーを入力してください');const button=$('#testAIConnection');button.disabled=true;button.textContent='接続確認中…';try{const d=await callGeminiDirect({input:'接続確認として status に ok、message に 接続できました を入れてください。',schema:AI_TEST_SCHEMA});state.ai.connectionStatus='接続済み';state.ai.lastError='';save();toast(d.message||'Geminiへの接続を確認しました');openAISettings()}catch(e){state.ai.connectionStatus='接続失敗';state.ai.lastError=e.message||'接続に失敗しました';save();toast('接続に失敗しました');openAISettings()}};$('#saveAISettings').onclick=()=>{readSettings();if(state.ai.mode==='geminiDirect'&&!getGeminiApiKey())return toast('Gemini APIキーを入力してください');closeModal();render();toast('AI設定を保存しました')}}
 
 function switchView(v){currentView=v;render();window.scrollTo(0,0)}
 function openModal(html,mode='default'){const modal=$('#modal');modal.classList.toggle('note-editor-modal',mode==='note-editor');modal.classList.toggle('note-viewer-modal',mode==='note-viewer');$('#modalContent').innerHTML=html;modal.classList.remove('hidden')}
