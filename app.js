@@ -1,7 +1,8 @@
 'use strict';
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const STORE='worknote_state_v1';
-const APP_VERSION='31.4.0';
+const RIVALPLUS_BRIDGE_STORE='worknote_rivalplus_bridge_v1';
+const APP_VERSION='31.5.0';
 const REPORT_DRAFT_STORE='worknote_report_drafts_v1';
 const CARD_SCORE_BRIDGE_KEY='worknote_cardscore_daily_v1';
 const CARD_SCORE_DB_KEY='aupay_v2';
@@ -62,7 +63,7 @@ let currentView='home', calCursor=new Date(), selectedDate=isoDate(new Date());
 let swRegistration=null, updateReloading=false;
 function clone(v){return JSON.parse(JSON.stringify(v))}
 function load(){try{const x=JSON.parse(localStorage.getItem(STORE));return x?Object.assign(clone(DEFAULT),x):clone(DEFAULT)}catch{return clone(DEFAULT)}}
-function save(){localStorage.setItem(STORE,JSON.stringify(state));syncCardScoreBridgeFromState()}
+function save(){localStorage.setItem(STORE,JSON.stringify(state));syncCardScoreBridgeFromState();try{exportRivalPlusBridge()}catch(error){console.warn('RIVAL+ bridge export failed:',error)}}
 function toast(t,actionLabel='',action=null,duration=2200){const e=$('#toast');e.innerHTML=`<span>${esc(t)}</span>${actionLabel?`<button id="toastAction">${esc(actionLabel)}</button>`:''}`;e.classList.remove('hidden');clearTimeout(toast.t);if(actionLabel&&$('#toastAction'))$('#toastAction').onclick=()=>{clearTimeout(toast.t);e.classList.add('hidden');action?.()};toast.t=setTimeout(()=>e.classList.add('hidden'),duration)}
 function formatDate(d){return new Intl.DateTimeFormat('ja-JP',{month:'long',day:'numeric',weekday:'long'}).format(d)}
 function shiftByDate(date){const id=state.shifts[date];return state.shiftTypes.find(x=>x.id===id)}
@@ -337,7 +338,7 @@ function performanceCompactSummary(metrics){
 }
 
 function performanceLines(data,{nonZeroOnly=false}={}){return PERFORMANCE_FIELDS.filter(([k])=>!nonZeroOnly||performanceValue(data,k)!==0).map(([k,l])=>`${l} ${performanceFormat(k,performanceValue(data,k))}`)}
-function performanceEditorHTML(data){const metrics=data.metrics||{};return `<div class="performance-editor"><div class="performance-editor-head"><div><h3>実績・結果</h3><p>数字だけ入力してください。月間実績へ自動集計されます。</p></div></div><div class="performance-input-grid">${PERFORMANCE_FIELDS.map(([k,l])=>`<label class="performance-input-row"><span>${esc(l)}</span><div class="performance-input-wrap"><input type="number" step="any" inputmode="decimal" data-performance="${k}" value="${esc(metrics[k]??'')}" placeholder="0">${k==='paidSupport'?'<em>円</em>':''}</div></label>`).join('')}</div><div class="field performance-comment"><label>実績コメント（任意）</label><textarea id="resultComment" placeholder="数字以外の振り返り・補足">${esc(data.resultComment??data.results??'')}</textarea></div></div>`}
+function performanceEditorHTML(data){const metrics=data.metrics||{};return `<div class="performance-editor"><div class="performance-editor-head"><div><h3>実績・結果</h3><p>数字だけ入力してください。月間実績へ自動集計されます。</p></div></div><div class="performance-input-grid">${PERFORMANCE_FIELDS.map(([k,l])=>`<label class="performance-input-row"><span>${esc(l)}</span><div class="performance-input-wrap"><input type="number" step="any" inputmode="decimal" data-performance="${k}" value="${metricNumber(metrics[k])===0?'':esc(metrics[k])}" placeholder="0">${k==='paidSupport'?'<em>円</em>':''}</div></label>`).join('')}</div><div class="field performance-comment"><label>実績コメント（任意）</label><textarea id="resultComment" placeholder="数字以外の振り返り・補足">${esc(data.resultComment??data.results??'')}</textarea></div></div>`}
 function performanceViewerHTML(data){const rows=PERFORMANCE_FIELDS.map(([k,l])=>`<div class="performance-view-row"><span>${esc(l)}</span><strong>${esc(performanceFormat(k,performanceValue(data,k)))}</strong></div>`).join('');return `<section class="report-view-section performance-view-section"><h3>実績・結果</h3><div class="performance-view-grid">${rows}</div>${(data.resultComment??data.results??'').trim()?`<div class="performance-view-comment">${displayMultiline(data.resultComment??data.results??'')}</div>`:''}</section>`}
 
 
@@ -1342,12 +1343,36 @@ function watchServiceWorker(registration){
 navigator.serviceWorker?.addEventListener('controllerchange',()=>{
  if(updateReloading)return;updateReloading=true;location.reload();
 });
+
+/* v31.5 RIVAL+ bridge: WORKNOTEの+1Collection・出勤日を同一オリジンで共有 */
+function exportRivalPlusBridge(){
+ const today=isoDate(new Date()), months=new Set();
+ state.notes.filter(n=>!n.archived&&n.type==='dailyReport'&&n.date).forEach(n=>months.add(String(n.date).slice(0,7)));
+ Object.keys(state.shifts||{}).forEach(d=>months.add(String(d).slice(0,7)));
+ months.add(today.slice(0,7));
+ const out={version:2,source:'WORKNOTE',worknoteVersion:APP_VERSION,profile:{name:state.profile?.name||'ヒガ'},updatedAt:nowISO(),months:{}};
+ [...months].sort().forEach(key=>{
+  const reports=state.notes.filter(n=>!n.archived&&n.type==='dailyReport'&&String(n.date||'').startsWith(key));
+  const byDate={};
+  reports.forEach(n=>{const v=performanceValue(n.reportData||{},'plusOne');byDate[n.date]=(byDate[n.date]||0)+metricNumber(v)});
+  const plusOneDaily=Object.entries(byDate).sort((a,b)=>a[0].localeCompare(b[0])).map(([date,value])=>({date,value:metricNumber(value)}));
+  const plusOneTotal=plusOneDaily.reduce((sum,x)=>sum+metricNumber(x.value),0);
+  const workDates=Object.keys(state.shifts||{}).filter(d=>String(d).startsWith(key)&&reportWorkday(d)).sort();
+  const completedWorkdays=workDates.filter(d=>d<today).length;
+  const remainingWorkdays=key<today.slice(0,7)?0:key>today.slice(0,7)?workDates.length:workDates.filter(d=>d>=today).length;
+  out.months[key]={plusOneTotal,plusOneDaily,workDates,completedWorkdays,remainingWorkdays,totalWorkdays:workDates.length,lastUpdatedDate:plusOneDaily.at(-1)?.date||''};
+ });
+ localStorage.setItem(RIVALPLUS_BRIDGE_STORE,JSON.stringify(out));
+ return out;
+}
+
 $$('.bottom-nav button').forEach(b=>b.onclick=()=>switchView(b.dataset.view));$('#quickAdd').onclick=()=>openQuickNote();$('#searchBtn').onclick=globalSearch;$('#modal').onclick=e=>{if(e.target===$('#modal'))closeModal()};
 function startApp(){
  try{
   $('#splash')?.classList.add('hidden');
   $('#app')?.classList.remove('hidden');
   render();
+  try{exportRivalPlusBridge()}catch(error){console.warn('RIVAL+ bridge export failed:',error)}
   checkTaskNotifications();
   const params=new URLSearchParams(location.search);
   if(params.get('action')==='quick-note')openQuickNote();if(params.get('action')==='daily-report'){const date=params.get('date')||isoDate(new Date());const existing=state.notes.find(n=>n.type==='dailyReport'&&n.date===date);openQuickNote(existing||null);setTimeout(()=>{if(!existing&&$('#noteType')){$('#noteType').value='dailyReport';$('#noteDate').value=date;$('#noteType').dispatchEvent(new Event('change'))}},50)}
@@ -1359,7 +1384,7 @@ function startApp(){
  }
 }
 
-document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')checkTaskNotifications()});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'){try{exportRivalPlusBridge()}catch(_){};checkTaskNotifications()}});
 setInterval(checkTaskNotifications,30000);
 window.addEventListener('load',()=>{
  setTimeout(startApp,250);
