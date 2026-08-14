@@ -1,7 +1,7 @@
 'use strict';
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const STORE='worknote_state_v1';
-const APP_VERSION='31.3.0';
+const APP_VERSION='31.4.0';
 const REPORT_DRAFT_STORE='worknote_report_drafts_v1';
 const CARD_SCORE_BRIDGE_KEY='worknote_cardscore_daily_v1';
 const CARD_SCORE_DB_KEY='aupay_v2';
@@ -340,59 +340,55 @@ function performanceLines(data,{nonZeroOnly=false}={}){return PERFORMANCE_FIELDS
 function performanceEditorHTML(data){const metrics=data.metrics||{};return `<div class="performance-editor"><div class="performance-editor-head"><div><h3>実績・結果</h3><p>数字だけ入力してください。月間実績へ自動集計されます。</p></div></div><div class="performance-input-grid">${PERFORMANCE_FIELDS.map(([k,l])=>`<label class="performance-input-row"><span>${esc(l)}</span><div class="performance-input-wrap"><input type="number" step="any" inputmode="decimal" data-performance="${k}" value="${esc(metrics[k]??'')}" placeholder="0">${k==='paidSupport'?'<em>円</em>':''}</div></label>`).join('')}</div><div class="field performance-comment"><label>実績コメント（任意）</label><textarea id="resultComment" placeholder="数字以外の振り返り・補足">${esc(data.resultComment??data.results??'')}</textarea></div></div>`}
 function performanceViewerHTML(data){const rows=PERFORMANCE_FIELDS.map(([k,l])=>`<div class="performance-view-row"><span>${esc(l)}</span><strong>${esc(performanceFormat(k,performanceValue(data,k)))}</strong></div>`).join('');return `<section class="report-view-section performance-view-section"><h3>実績・結果</h3><div class="performance-view-grid">${rows}</div>${(data.resultComment??data.results??'').trim()?`<div class="performance-view-comment">${displayMultiline(data.resultComment??data.results??'')}</div>`:''}</section>`}
 
+
 const SELLNAVI_BRIDGE_KEY='worknote_sellnavi_bridge_v1';
+const SELLNAVI_DATA_KEY='sellnavi_data';
+const SELLNAVI_TARGETS_KEY='sellnavi_targets';
+const SELLNAVI_METRICS=[
+ {key:'shinki',name:'新規',unit:'台',monthly:true},{key:'ltv',name:'LTV',unit:'pt',monthly:true},
+ {key:'supportFlat',name:'サポート定額',unit:'件',monthly:true},{key:'paidSupport',name:'有償サポート',unit:'円',monthly:true},
+ {key:'plus1Collection',name:'+1Collection',unit:'円',monthly:true},{key:'kishu',name:'機種変更',unit:'台',monthly:false},
+ {key:'celup',name:'セルアップ',unit:'台',monthly:false},{key:'tab',name:'タブ',unit:'件',monthly:false},
+ {key:'nw',name:'NW',unit:'点',monthly:false},{key:'wimax',name:'WiMAX',unit:'台',monthly:false},
+ {key:'denki',name:'でんき',unit:'件',monthly:false},{key:'kurekka',name:'クレカ',unit:'件',monthly:false},
+ {key:'gold',name:'内ゴールド',unit:'件',monthly:false},{key:'jibun',name:'じぶん銀行',unit:'件',monthly:false},
+ {key:'setai',name:'世帯商材',unit:'件',monthly:false},{key:'kojin',name:'個人商材',unit:'件',monthly:false},
+ {key:'certified',name:'certified',unit:'台',monthly:false}
+];
+const SELLNAVI_DEFAULT_TARGETS={shinki:540,ltv:null,supportFlat:60,paidSupport:300000,plus1Collection:4000000,kishu:340,celup:80,tab:4,nw:230,wimax:6,denki:10,kurekka:45,gold:20,jibun:25,setai:10,kojin:95,certified:5};
+const SELLNAVI_QUARTERS=[{name:'Q1',months:[5,6,7]},{name:'Q2',months:[8,9,10]},{name:'Q3',months:[11,0,1]},{name:'Q4',months:[2,3,4]}];
 
-function loadSellNaviBridge(){
- try{return JSON.parse(localStorage.getItem(SELLNAVI_BRIDGE_KEY)||'null')}catch{return null}
-}
-function sellNaviSnapshotForDate(date){
- const bridge=loadSellNaviBridge();if(!bridge?.snapshots)return null;
- if(bridge.snapshots[date])return structuredClone?structuredClone(bridge.snapshots[date]):JSON.parse(JSON.stringify(bridge.snapshots[date]));
- const month=String(date).slice(0,7);
- const candidates=Object.keys(bridge.snapshots).filter(k=>k<=date&&k.startsWith(month)).sort();
- const key=candidates[candidates.length-1];
- if(!key)return null;
- const snap=JSON.parse(JSON.stringify(bridge.snapshots[key]));snap.fallbackFromDate=key;return snap
-}
-function sellNaviRelevantMetrics(snapshot,text=''){
- if(!snapshot?.metrics)return [];
- const mentioned=snapshot.metrics.filter(m=>String(text||'').includes(m.name));
- const shortage=snapshot.metrics.filter(m=>m.target!=null&&m.remain>0).sort((a,b)=>(a.pct??999)-(b.pct??999)).slice(0,6);
- const all=[...mentioned,...shortage],seen=new Set();
- return all.filter(m=>!seen.has(m.key)&&seen.add(m.key)).slice(0,8)
-}
+function loadSellNaviBridge(){try{return JSON.parse(localStorage.getItem(SELLNAVI_BRIDGE_KEY)||'null')}catch{return null}}
+function loadSellNaviRawData(){try{return JSON.parse(localStorage.getItem(SELLNAVI_DATA_KEY)||'{}')||{}}catch{return{}}}
+function loadSellNaviRawTargets(){try{return {...SELLNAVI_DEFAULT_TARGETS,...(JSON.parse(localStorage.getItem(SELLNAVI_TARGETS_KEY)||'null')||{})}}catch{return {...SELLNAVI_DEFAULT_TARGETS}}}
+function sellNaviQuarterFor(year,month){return SELLNAVI_QUARTERS.find(q=>q.months.includes(month))||null}
+function sellNaviElapsedMonths(year,month){const q=sellNaviQuarterFor(year,month);return q?Math.max(1,q.months.indexOf(month)+1):1}
+function sellNaviMonthYearForQuarterMonth(year,currentMonth,quarterMonth){let y=year;if(currentMonth<=1&&quarterMonth>=11)y=year-1;if(currentMonth>=11&&quarterMonth<=1)y=year+1;return y}
+function sellNaviLatestEntryForMonth(raw,year,month,throughDate=''){const prefix=`${year}-${String(month+1).padStart(2,'0')}`;const keys=Object.keys(raw||{}).filter(k=>k.startsWith(prefix)&&(!throughDate||k<=throughDate)).sort();if(!keys.length)return{key:'',values:{}};const key=keys[keys.length-1];return{key,values:raw[key]||{}}}
 
-function refreshSellNaviEditorCard(date,existingData={}){
- const holder=$('#sellNaviSyncHolder');
- if(!holder)return false;
- const current=sellNaviSnapshotForDate(date);
- holder.innerHTML=sellNaviEditorCard(date,{...existingData,sellNaviSnapshot:current||existingData.sellNaviSnapshot||null});
- bindSellNaviRefreshButton(date,existingData);
- toast(current?'セルナビ最新値に更新しました':'セルナビの最新データが見つかりません');
- return !!current
+function sellNaviDirectSnapshotForDate(date){
+ const raw=loadSellNaviRawData();if(!Object.keys(raw).length)return null;
+ const d=new Date(`${date}T12:00:00`);if(Number.isNaN(d.getTime()))return null;
+ const year=d.getFullYear(),month=d.getMonth(),q=sellNaviQuarterFor(year,month),elapsed=sellNaviElapsedMonths(year,month),targets=loadSellNaviRawTargets();
+ const actual=Object.fromEntries(SELLNAVI_METRICS.map(m=>[m.key,0]));let latestInputDate='';
+ (q?q.months:[month]).forEach(mo=>{const y=sellNaviMonthYearForQuarterMonth(year,month,mo);if(y*100+mo>year*100+month)return;const latest=sellNaviLatestEntryForMonth(raw,y,mo,(y===year&&mo===month)?date:'');if(latest.key&&latest.key>latestInputDate)latestInputDate=latest.key;SELLNAVI_METRICS.forEach(m=>{const v=Number(latest.values?.[m.key]||0);if(m.monthly){if(y===year&&mo===month)actual[m.key]=v}else actual[m.key]=Number((actual[m.key]+v).toFixed(1))})});
+ if(!latestInputDate)return null;
+ const metrics=SELLNAVI_METRICS.map(m=>{const base=targets[m.key],target=base==null?null:(m.monthly?Number(base):Number((Number(base)*elapsed).toFixed(1))),val=Number(actual[m.key]||0),remain=target==null?null:Number((target-val).toFixed(1)),pct=target>0?Math.round(val/target*100):null;return {...m,actual:val,target,remain,pct,status:target==null?'no-target':val>=target?'achieved':pct>=70?'warning':'danger'}});
+ return {source:'sellnavi-direct',snapshotDate:date,latestInputDate,period:{quarter:q?.name||'',elapsedMonths:elapsed},createdAt:new Date().toISOString(),metrics}
 }
-function bindSellNaviRefreshButton(date,existingData={}){
- const btn=$('#refreshSellNaviBtn');
- if(btn)btn.onclick=()=>refreshSellNaviEditorCard(date,existingData)
-}
-
-function sellNaviEditorCard(date,data={}){
- const snap=sellNaviSnapshotForDate(date)||data.sellNaviSnapshot||null;
- if(!snap)return `<div class="sellnavi-sync-card not-synced"><div class="sellnavi-sync-head"><div><strong>セルナビ未同期</strong><p>セルナビで実績を保存すると自動で読み取れます。</p></div><button type="button" class="sellnavi-refresh-mini" id="refreshSellNaviBtn">更新</button></div></div>`;
- const metrics=sellNaviRelevantMetrics(snap,data.storeAction||'');
- const updated=snap.createdAt?new Date(snap.createdAt).toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'}):'';
- return `<details class="sellnavi-sync-card"><summary><span>セルナビ同期済み ✓</span><span class="sellnavi-summary-right"><small>${esc(snap.snapshotDate||date)}${updated?`・${updated}`:''}</small><button type="button" class="sellnavi-refresh-mini" id="refreshSellNaviBtn">更新</button></span></summary><div class="sellnavi-sync-list">${metrics.map(m=>`<div><span>${esc(m.name)}</span><strong>${m.target==null?esc(performanceFormat(m.key,m.actual)):`${esc(performanceFormat(m.key,m.actual))} / ${esc(performanceFormat(m.key,m.target))}`}</strong>${m.remain!=null?`<small>残 ${esc(performanceFormat(m.key,m.remain))}・${m.pct??0}%</small>`:''}</div>`).join('')||'<p class="small">表示対象なし</p>'}</div><p class="small">数字はセルナビから自動取得。日報には数字ではなく「不足に対して何を考え、誰にどう働きかけたか」を書いてください。</p></details>`
-}
-function captureSellNaviSnapshot(date,existingSnapshot=null){
- return sellNaviSnapshotForDate(date)||existingSnapshot||null
-}
-function sellNaviAIContext(data){
- const snap=data?.sellNaviSnapshot;if(!snap)return null;
- const relevant=sellNaviRelevantMetrics(snap,`${data.storeAction||''}\n${data.actions||''}\n${data.staffRelation||''}`);
- return {snapshotDate:snap.snapshotDate,latestInputDate:snap.latestInputDate,period:snap.period,metrics:relevant.map(m=>({name:m.name,unit:m.unit,actual:m.actual,target:m.target,remain:m.remain,pct:m.pct,status:m.status}))}
-}
-
-
+function sellNaviBridgeSnapshotForDate(date){const bridge=loadSellNaviBridge();if(!bridge?.snapshots)return null;if(bridge.snapshots[date])return JSON.parse(JSON.stringify(bridge.snapshots[date]));const month=String(date).slice(0,7),c=Object.keys(bridge.snapshots).filter(k=>k<=date&&k.startsWith(month)).sort(),key=c[c.length-1];if(!key)return null;const snap=JSON.parse(JSON.stringify(bridge.snapshots[key]));snap.fallbackFromDate=key;return snap}
+function sellNaviSnapshotForDate(date){return sellNaviDirectSnapshotForDate(date)||sellNaviBridgeSnapshotForDate(date)}
+function sellNaviAllMetrics(snapshot){return Array.isArray(snapshot?.metrics)?snapshot.metrics:[]}
+function sellNaviRelevantMetrics(snapshot,text=''){if(!snapshot?.metrics)return[];const mentioned=snapshot.metrics.filter(m=>String(text||'').includes(m.name)),shortage=snapshot.metrics.filter(m=>m.target!=null&&m.remain>0).sort((a,b)=>(a.pct??999)-(b.pct??999)).slice(0,6),all=[...mentioned,...shortage],seen=new Set();return all.filter(m=>!seen.has(m.key)&&seen.add(m.key)).slice(0,8)}
+function sellNaviSnapshotSignature(snap){return snap?JSON.stringify({latestInputDate:snap.latestInputDate,metrics:(snap.metrics||[]).map(m=>[m.key,m.actual,m.target,m.remain,m.pct])}):''}
+function sellNaviRefreshMessage(before,after){if(!after)return'セルナビの保存データが見つかりません';if(!before)return`セルナビ ${after.latestInputDate||''} の保存値を読み込みました`;return sellNaviSnapshotSignature(before)!==sellNaviSnapshotSignature(after)?`セルナビ ${after.latestInputDate||''} の最新保存値を反映しました`:`セルナビ側の保存値に変更はありません（${after.latestInputDate||'入力日不明'}）`}
+function refreshSellNaviEditorCard(date,existingData={}){const holder=$('#sellNaviSyncHolder');if(!holder)return false;const before=holder.dataset.sellnaviSignature||sellNaviSnapshotSignature(existingData.sellNaviSnapshot||null),current=sellNaviSnapshotForDate(date);holder.innerHTML=sellNaviEditorCard(date,{...existingData,sellNaviSnapshot:current||existingData.sellNaviSnapshot||null});holder.dataset.sellnaviSignature=sellNaviSnapshotSignature(current||existingData.sellNaviSnapshot||null);bindSellNaviRefreshButton(date,existingData);toast(!current?'セルナビの保存データが見つかりません':before!==sellNaviSnapshotSignature(current)?`セルナビ ${current.latestInputDate||''} の最新保存値を反映しました`:`セルナビ側の保存値に変更はありません（${current.latestInputDate||'入力日不明'}）`,'',null,3300);return!!current}
+function bindSellNaviRefreshButton(date,existingData={}){const btn=$('#refreshSellNaviBtn');if(btn)btn.onclick=e=>{e.preventDefault();e.stopPropagation();refreshSellNaviEditorCard(date,existingData)}}
+function formatSellNaviMetric(value,m){const n=Number(value||0);if(m?.unit==='円')return`${Math.round(n).toLocaleString('ja-JP')}円`;const body=Number.isInteger(n)?String(n):String(Number(n.toFixed(1)));return`${body}${m?.unit||''}`}
+function sellNaviMetricValueHTML(m){const actual=formatSellNaviMetric(m.actual,m);if(m.target==null)return`<strong>${esc(actual)}</strong><small>目標なし</small>`;const target=formatSellNaviMetric(m.target,m),remain=Number(m.remain||0),remainText=remain<0?`+${formatSellNaviMetric(Math.abs(remain),m)}`:remain===0?'達成':`残 ${formatSellNaviMetric(remain,m)}`;return`<strong>${esc(actual)} / ${esc(target)}</strong><small>${esc(remainText)}${m.pct!=null?`・${esc(m.pct)}%`:''}</small>`}
+function sellNaviEditorCard(date,data={}){const snap=sellNaviSnapshotForDate(date)||data.sellNaviSnapshot||null;if(!snap)return`<div class="sellnavi-sync-card not-synced"><div class="sellnavi-sync-head"><div><strong>セルナビ未同期</strong><p>セルナビで実績を保存するとここへ反映されます。</p></div><button type="button" class="sellnavi-refresh-mini" id="refreshSellNaviBtn">再読込</button></div></div>`;const metrics=sellNaviAllMetrics(snap),sourceLabel=snap.source==='sellnavi-direct'?'セルナビ本体から直接取得':'連携データから取得';return`<details class="sellnavi-sync-card" open><summary><span>セルナビ同期済み ✓</span><span class="sellnavi-summary-right"><small>入力日 ${esc(snap.latestInputDate||snap.snapshotDate||date)}</small><button type="button" class="sellnavi-refresh-mini" id="refreshSellNaviBtn">再読込</button></span></summary><div class="sellnavi-source-note">${esc(sourceLabel)}・全${metrics.length}項目</div><div class="sellnavi-sync-list sellnavi-sync-list-all">${metrics.map(m=>`<div><span>${esc(m.name)}</span>${sellNaviMetricValueHTML(m)}</div>`).join('')}</div><p class="small">セルナビ本体の保存値を直接読み込み、セルナビと同じ月次・四半期計算で表示しています。</p></details>`}
+function captureSellNaviSnapshot(date,existingSnapshot=null){return sellNaviSnapshotForDate(date)||existingSnapshot||null}
+function sellNaviAIContext(data){const snap=data?.sellNaviSnapshot;if(!snap)return null;const relevant=sellNaviRelevantMetrics(snap,`${data.storeAction||''}\n${data.actions||''}\n${data.staffRelation||''}`);return{snapshotDate:snap.snapshotDate,latestInputDate:snap.latestInputDate,period:snap.period,metrics:relevant.map(m=>({name:m.name,unit:m.unit,actual:m.actual,target:m.target,remain:m.remain,pct:m.pct,status:m.status}))}}
 function workModeForDate(date){
  const shift=shiftByDate(date);
  if(!shift)return {mode:'unknown',label:'シフト未登録',shift:null,isHoliday:false,isWorkday:false};
@@ -568,7 +564,7 @@ function openReportViewer(n){
  ['#retryDailyFeedback','#retryDailyFeedbackTop'].forEach(sel=>{const x=$(sel);if(x)x.onclick=runDailyReanalysis});
  $$('[data-add-training]').forEach(btn=>btn.onclick=()=>{const i=Number(btn.dataset.addTraining),training=n.aiFeedback?.trainingPlan?.[i];if(training)addMentorTrainingRule(training)});
  $$('.roleup-from-report').forEach(btn=>btn.onclick=()=>{const rt=n.aiFeedback?.roleupTask;if(!rt)return;let existing=(state.ai.mentor.roleupTasks||[]).find(t=>t.source==='daily:'+n.id&&t.status!=='cancelled');if(!existing){existing=createRoleupAssignment({...rt,sourceDate:n.date},'daily:'+n.id)}launchRoleupTask(existing)});
- if(!workMode.isHoliday){const vbtn=$('#viewerRefreshSellNaviBtn');if(vbtn)vbtn.onclick=()=>{const fresh=sellNaviSnapshotForDate(n.date),holder=$('#viewerSellNaviHolder');if(holder)holder.innerHTML=sellNaviEditorCard(n.date,{...data,sellNaviSnapshot:fresh||data.sellNaviSnapshot||null});toast(fresh?'セルナビ最新値に更新しました':'セルナビの最新データが見つかりません')}}
+ if(!workMode.isHoliday){const vbtn=$('#viewerRefreshSellNaviBtn');if(vbtn)vbtn.onclick=e=>{e.preventDefault();const before=data.sellNaviSnapshot||null,fresh=sellNaviSnapshotForDate(n.date),holder=$('#viewerSellNaviHolder');if(fresh){data.sellNaviSnapshot=fresh;n.reportData=data;n.updatedAt=nowISO();save()}if(holder)holder.innerHTML=sellNaviEditorCard(n.date,{...data,sellNaviSnapshot:fresh||data.sellNaviSnapshot||null});toast(sellNaviRefreshMessage(before,fresh),'',null,3300)}}
 }
 function loadReportDraft(date){try{return JSON.parse(localStorage.getItem(REPORT_DRAFT_STORE)||'{}')[date]||null}catch{return null}}
 function saveReportDraft(date,draft){try{const all=JSON.parse(localStorage.getItem(REPORT_DRAFT_STORE)||'{}');all[date]=draft;localStorage.setItem(REPORT_DRAFT_STORE,JSON.stringify(all))}catch{}}
