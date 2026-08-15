@@ -2,7 +2,7 @@
 const $=(s,r=document)=>r.querySelector(s), $$=(s,r=document)=>[...r.querySelectorAll(s)];
 const STORE='worknote_state_v1';
 const RIVALPLUS_BRIDGE_STORE='worknote_rivalplus_bridge_v1';
-const APP_VERSION='31.5.0';
+const APP_VERSION='31.6.0';
 const REPORT_DRAFT_STORE='worknote_report_drafts_v1';
 const CARD_SCORE_BRIDGE_KEY='worknote_cardscore_daily_v1';
 const CARD_SCORE_DB_KEY='aupay_v2';
@@ -338,9 +338,20 @@ function performanceCompactSummary(metrics){
 }
 
 function performanceLines(data,{nonZeroOnly=false}={}){return PERFORMANCE_FIELDS.filter(([k])=>!nonZeroOnly||performanceValue(data,k)!==0).map(([k,l])=>`${l} ${performanceFormat(k,performanceValue(data,k))}`)}
-function performanceEditorHTML(data){const metrics=data.metrics||{};return `<div class="performance-editor"><div class="performance-editor-head"><div><h3>実績・結果</h3><p>数字だけ入力してください。月間実績へ自動集計されます。</p></div></div><div class="performance-input-grid">${PERFORMANCE_FIELDS.map(([k,l])=>`<label class="performance-input-row"><span>${esc(l)}</span><div class="performance-input-wrap"><input type="number" step="any" inputmode="decimal" data-performance="${k}" value="${metricNumber(metrics[k])===0?'':esc(metrics[k])}" placeholder="0">${k==='paidSupport'?'<em>円</em>':''}</div></label>`).join('')}</div><div class="field performance-comment"><label>実績コメント（任意）</label><textarea id="resultComment" placeholder="数字以外の振り返り・補足">${esc(data.resultComment??data.results??'')}</textarea></div></div>`}
+function performanceEditorHTML(data){const metrics=data.metrics||{};return `<div class="performance-editor"><div class="performance-editor-head"><div><h3>実績・結果</h3><p>保存済みの数字はタップすると選択されます。そのまま新しい数字を入力すれば上書き、入力しなければ元の数字を維持します。</p></div></div><div class="performance-input-grid">${PERFORMANCE_FIELDS.map(([k,l])=>`<label class="performance-input-row"><span>${esc(l)}</span><div class="performance-input-wrap"><input type="number" step="any" inputmode="decimal" data-performance="${k}" value="${metricNumber(metrics[k])===0?'':esc(metrics[k])}" placeholder="0">${k==='paidSupport'?'<em>円</em>':''}</div></label>`).join('')}</div><div class="field performance-comment"><label>実績コメント（任意）</label><textarea id="resultComment" placeholder="数字以外の振り返り・補足">${esc(data.resultComment??data.results??'')}</textarea></div></div>`}
 function performanceViewerHTML(data){const rows=PERFORMANCE_FIELDS.map(([k,l])=>`<div class="performance-view-row"><span>${esc(l)}</span><strong>${esc(performanceFormat(k,performanceValue(data,k)))}</strong></div>`).join('');return `<section class="report-view-section performance-view-section"><h3>実績・結果</h3><div class="performance-view-grid">${rows}</div>${(data.resultComment??data.results??'').trim()?`<div class="performance-view-comment">${displayMultiline(data.resultComment??data.results??'')}</div>`:''}</section>`}
 
+
+function bindPerformanceOverwriteInputs(){
+ $$('[data-performance]').forEach(input=>{
+  input.addEventListener('focus',()=>{
+   if(input.value!=='')setTimeout(()=>{try{input.select()}catch{}},0)
+  });
+  input.addEventListener('click',()=>{
+   if(input.value!==''&&document.activeElement===input)setTimeout(()=>{try{input.select()}catch{}},0)
+  });
+ })
+}
 
 const SELLNAVI_BRIDGE_KEY='worknote_sellnavi_bridge_v1';
 const SELLNAVI_DATA_KEY='sellnavi_data';
@@ -519,36 +530,46 @@ function reportTitleForDate(date){const d=new Date(date+'T12:00:00');return `${d
 function reportFeedbackHTML(n){
  const a=n.aiFeedback;
  if(!a)return `<section class="daily-ai-feedback"><div class="daily-ai-title"><span>AI副店長メンター</span><strong>1日の育成フィードバック</strong></div>${n.aiFeedbackError?`<div class="mentor-ai-error"><strong>AI分析できませんでした</strong><p>${esc(n.aiFeedbackError)}</p></div>`:'<div class="empty">まだAIフィードバックはありません。</div>'}<button class="secondary" id="retryDailyFeedback">${n.aiFeedbackError?'もう一度AI分析':'Geminiでメンター分析を生成'}</button></section>`;
- if(!a.mentorVersion){
-  return `<section class="daily-ai-feedback"><div class="daily-ai-title"><span>AI副店長メンター</span><strong>旧フィードバック</strong></div>${a.workMode==='holiday'?`<div class="feedback-block holiday-feedback"><span>休日モード</span><p>今日は勤務評価ではなく、自己成長・訓練・振り返りを中心に評価しています。</p></div>${a.holidayLearningEvaluation?`<div class="feedback-block holiday-learning"><span>休日の学び・訓練評価</span><p>${displayMultiline(a.holidayLearningEvaluation)}</p></div>`:''}`:''}
-  <div class="feedback-block"><span>総合評価</span><p>${displayMultiline(a.overall||'')}</p></div><div class="feedback-block goal-eval"><span>今日の目標 → 結果</span><p>${displayMultiline(a.goalEvaluation||'')}</p></div><div class="feedback-block"><span>数字への評価</span><p>${displayMultiline(a.numbers||'')}</p></div><div class="feedback-block strict"><span>改善すべき点</span><p>${displayMultiline(a.issues||'')}</p></div><button class="primary" id="retryDailyFeedback">新しいAIメンターで再分析</button></section>`
+
+ // v5 = focused mentor. Older versions remain readable in legacy mode.
+ if(Number(a.mentorVersion||0)<5){
+  return `<section class="daily-ai-feedback mentor-feedback"><div class="daily-ai-title"><span>AI副店長メンター</span><strong>過去の育成フィードバック</strong></div>
+   <div class="feedback-block"><span>総合評価</span><p>${displayMultiline(a.overall||'')}</p></div>
+   <div class="feedback-block"><span>良かったこと</span><p>${displayMultiline(a.good||'')}</p></div>
+   <div class="feedback-block strict"><span>改善点</span><p>${displayMultiline(a.issues||'')}</p></div>
+   ${a.topPriority?`<div class="feedback-priority"><span>次回の最優先</span><strong>${esc(a.topPriority)}</strong></div>`:''}
+   <button class="primary" id="retryDailyFeedback">新しい専属メンターで再分析</button>
+  </section>`
  }
- const ratings=(a.areaRatings||[]);
- const diagnoses=(a.issueDiagnosis||[]);
- const trainings=(a.trainingPlan||[]);
- return `<section class="daily-ai-feedback mentor-feedback">
-  <div class="daily-ai-title"><span>AI副店長メンター</span><strong>副店長としての1日を育成分析</strong></div>
+
+ const diagnosis=(a.issueDiagnosis||[])[0]||null;
+ const action=(a.tomorrowActions||[])[0]||a.topPriority||'';
+ const prev=String(a.previousCommitmentReview||'').trim();
+ const roleParts=[a.salesEvaluation?`<div><span>販売スタッフとして</span><p>${displayMultiline(a.salesEvaluation)}</p></div>`:'',a.deputyManagerEvaluation?`<div><span>副店長として</span><p>${displayMultiline(a.deputyManagerEvaluation)}</p></div>`:''].filter(Boolean).join('');
+ return `<section class="daily-ai-feedback mentor-feedback mentor-focused-feedback">
+  <div class="daily-ai-title"><span>AI副店長メンター</span><strong>今日の育成判断</strong></div>
   ${n.aiFeedbackError?`<div class="mentor-ai-error"><strong>再分析できませんでした</strong><p>${esc(n.aiFeedbackError)}</p><button class="primary" id="retryDailyFeedback">もう一度再分析する</button></div>`:'<button class="secondary mentor-reanalyze-top" id="retryDailyFeedbackTop">この日報をもう一度AI分析</button>'}
-  <div class="feedback-block mentor-prev"><span>前回からの約束・課題</span><p>${displayMultiline(a.previousCommitmentReview||'')}</p></div>
-  <div class="feedback-block"><span>総合評価</span><p>${displayMultiline(a.overall||'')}</p></div>
-  <div class="feedback-block goal-eval"><span>今日の目標 → 結果</span><p>${displayMultiline(a.goalEvaluation||'')}</p></div>
-  <div class="feedback-block mentor-role"><span>販売スタッフとして</span><p>${displayMultiline(a.salesEvaluation||'')}</p></div>
-  <div class="feedback-block mentor-role"><span>副店長として</span><p>${displayMultiline(a.deputyManagerEvaluation||'')}</p></div>
-  <div class="feedback-block"><span>1日の時間・動き方</span><p>${displayMultiline(a.dayManagement||'')}</p></div>
-  <div class="feedback-block"><span>数字管理・実績</span><p>${displayMultiline(a.numbers||'')}</p></div>
-  <div class="feedback-block"><span>スタッフ育成・店舗管理</span><p>${displayMultiline(a.staffManagement||'')}</p></div>
-  <div class="feedback-block"><span>発言・報連相・コミュニケーション</span><p>${displayMultiline(a.communicationEvaluation||'')}</p></div>
-  ${ratings.length?`<div class="feedback-block mentor-ratings"><span>副店長8領域</span><div class="mentor-rating-list">${ratings.map(x=>`<div><div>${mentorEvaluationBadge(x.grade)}<strong>${esc(x.area)}</strong></div><p>${esc(x.reason)}</p></div>`).join('')}</div></div>`:''}
-  <div class="feedback-block"><span>良かった判断・行動</span><p>${displayMultiline(a.good||'')}</p></div>
-  <div class="feedback-block strict"><span>改善すべき点</span><p>${displayMultiline(a.issues||'')}</p></div>
-  ${diagnoses.length?`<div class="feedback-block mentor-diagnosis"><span>課題の原因分析</span>${diagnoses.map(x=>`<article><div class="mentor-issue-head"><b>${esc(x.category)}</b><strong>${esc(x.title)}</strong><em>${esc(x.status)}</em></div><p><b>根拠：</b>${esc(x.evidence)}</p><p><b>原因仮説：</b>${esc(x.hypothesis)}</p><p><b>放置した場合：</b>${esc(x.impact)}</p></article>`).join('')}</div>`:''}
-  ${trainings.length?`<div class="feedback-block mentor-training"><span>実用的な訓練メニュー</span>${trainings.map((x,i)=>`<article><strong>${esc(x.title)}</strong><p><b>目的：</b>${esc(x.purpose)}</p><p><b>やり方：</b>${esc(x.method)}</p><div class="mentor-training-meta"><span>⏱ ${esc(x.duration)}</span><span>📏 ${esc(x.measure)}</span></div><p><b>次の段階：</b>${esc(x.nextLevel)}</p><button class="secondary mentor-training-task" data-training-rule="${i}">毎日の自動タスクに追加</button></article>`).join('')}</div>`:''}
-  ${(a.tomorrowActions||[]).length?`<div class="feedback-block action"><span>次の勤務で実行すること</span><ol>${a.tomorrowActions.map(x=>`<li>${esc(x)}</li>`).join('')}</ol></div>`:''}
-  <div class="feedback-priority"><span>次回の最優先</span><strong>${esc(a.topPriority||'')}</strong></div>
-  ${(a.memoryUpdates||[]).filter(x=>x.action==='upsert').length?`<div class="feedback-block mentor-memory-captured"><span>AIが継続して覚えること</span><ul>${a.memoryUpdates.filter(x=>x.action==='upsert').map(x=>`<li><b>${esc(x.category)}</b>：${esc(x.content)} <small>（${esc(x.scope)}）</small></li>`).join('')}</ul></div>`:''}
-  ${a.roleupTask?.shouldAssign?`<div class="feedback-block roleup-recommend"><span>🎭 推奨ROLEUP</span><h4>${esc(a.roleupTask.title||'実践ロープレ')}</h4><p>${displayMultiline(a.roleupTask.reason||'')}</p><small>${displayMultiline(a.roleupTask.focus||'')}</small><button class="primary roleup-from-report" data-roleup-report="${n.id}">ROLEUPで練習</button></div>`:''}
-  <div class="feedback-block mentor-comment"><span>メンターコメント</span><p>${displayMultiline(a.mentorComment||'')}</p></div>
-  ${a.topPriority?'<button class="primary tomorrow-priority-btn" id="sendTomorrowPriority">明日の重点に設定</button>':''}
+
+  <div class="mentor-score-card"><span>今日の副店長評価</span><strong>${esc(Math.round(Number(a.mentorScore)||0))}<small>/100</small></strong><p>${displayMultiline(a.overall||'')}</p></div>
+
+  ${roleParts?`<div class="mentor-role-split">${roleParts}</div>`:''}
+
+  ${prev?`<div class="feedback-block mentor-prev focused"><span>前回課題</span><div class="mentor-prev-status">${esc(a.previousCommitmentStatus||'判定材料不足')}</div><p>${displayMultiline(prev)}</p></div>`:''}
+
+  <div class="feedback-block mentor-best focused"><span>今日一番良かったこと</span><p>${displayMultiline(a.good||'')}</p></div>
+
+  <div class="feedback-block strict mentor-main-issue focused"><span>今日の最大課題</span><h4>${esc(diagnosis?.title||a.issues||'')}</h4>
+   ${diagnosis?.evidence?`<p><b>根拠：</b>${esc(diagnosis.evidence)}</p>`:''}
+   ${diagnosis?.hypothesis?`<p><b>原因：</b>${esc(diagnosis.hypothesis)}</p>`:''}
+  </div>
+
+  ${action?`<div class="feedback-block action mentor-next-one focused"><span>次回勤務でやること</span><strong>${esc(action)}</strong>${a.actionSuccessCriteria?`<p><b>できた判定：</b>${esc(a.actionSuccessCriteria)}</p>`:''}</div>`:''}
+
+  ${a.roleupTask?.shouldAssign?`<div class="feedback-block roleup-recommend focused"><span>🎭 ROLEUP</span><h4>${esc(a.roleupTask.title||'実践ロープレ')}</h4><p>${displayMultiline(a.roleupTask.reason||'')}</p><small>${displayMultiline(a.roleupTask.focus||'')}</small><button class="primary roleup-from-report" data-roleup-report="${n.id}">ROLEUPで練習</button></div>`:''}
+
+  <div class="feedback-block mentor-comment focused"><span>メンターコメント</span><p>${displayMultiline(a.mentorComment||'')}</p></div>
+
+  ${a.topPriority?'<button class="primary tomorrow-priority-btn" id="sendTomorrowPriority">次回の重点に設定</button>':''}
   <button class="secondary" id="retryDailyFeedback">Geminiで再分析</button>
  </section>`
 }
@@ -589,9 +610,9 @@ function openQuickNote(existing=null){
   else{const draft=loadSimpleDraft(existing,type,date);const selectedIds=existing?(existing.staffIds?.length?existing.staffIds:(existing.staffId?[existing.staffId]:[])):(draft?.staffIds||[]);const rawText=existing?.text||draft?.text||htmlToPlainText(existing?.richHTML||draft?.richHTML||'');box.innerHTML=`<div class="draft-status" id="simpleDraftStatus">${draft&&!existing?'下書きを復元しました':'入力内容は自動保存されます'}</div>${staffSelectorHTML(selectedIds)}<div class="field note-editor-body simple-memo-editor"><label>本文</label><textarea id="quickText" placeholder="メモを入力">${esc(rawText)}</textarea></div>`;$$('[data-staff-select]').forEach(x=>x.addEventListener('change',queuePlainDraft));$('#quickText')?.addEventListener('input',queuePlainDraft);setTimeout(()=>$('#quickText')?.focus(),50);}
  };
  const bindStaffPickers=()=>{let lastReportArea=null;$$('[data-report-field],#storeAction,#resultComment').forEach(x=>x.addEventListener('focus',()=>lastReportArea=x));$$('[data-insert-report-staff]').forEach(b=>b.onclick=()=>{const m=staffMemberById(b.dataset.insertReportStaff);const target=lastReportArea||$('[data-report-field="staffRelation"]')||$('[data-report-field]');if(!m||!target)return;const token=`${m.name}さん `,value=target.value||'',start=target.selectionStart??value.length,end=target.selectionEnd??value.length,before=value.slice(0,start),after=value.slice(end),lineStart=before.lastIndexOf('\n')+1,prefix=before.slice(lineStart).trim()?'\n':'';target.value=before+prefix+token+after;const pos=(before+prefix+token).length;target.focus();target.setSelectionRange(pos,pos);target.dispatchEvent(new Event('input',{bubbles:true}))})};
- $('#noteType').onchange=()=>{renderDynamic();bindStaffPickers();bindReportAutosave();bindMeetingAutosave();if($('#noteType').value==='dailyReport'&&!workModeForDate($('#noteDate').value).isHoliday)bindSellNaviRefreshButton($('#noteDate').value,existing?.reportData||{})};
- $('#noteDate').onchange=()=>{const was=$('#noteType').value;renderDynamic();bindStaffPickers();if(was==='dailyReport'&&$('#reportTitle'))$('#reportTitle').value=reportTitleForDate($('#noteDate').value);bindReportAutosave();bindMeetingAutosave();if($('#noteType').value==='dailyReport'&&!workModeForDate($('#noteDate').value).isHoliday)bindSellNaviRefreshButton($('#noteDate').value,existing?.reportData||{})};
- renderDynamic();bindStaffPickers();bindReportAutosave();bindMeetingAutosave();if($('#noteType').value==='dailyReport'&&!workModeForDate($('#noteDate').value).isHoliday)bindSellNaviRefreshButton($('#noteDate').value,existing?.reportData||{});
+ $('#noteType').onchange=()=>{renderDynamic();bindStaffPickers();bindReportAutosave();bindMeetingAutosave();if($('#noteType').value==='dailyReport'){bindPerformanceOverwriteInputs();if(!workModeForDate($('#noteDate').value).isHoliday)bindSellNaviRefreshButton($('#noteDate').value,existing?.reportData||{})}};
+ $('#noteDate').onchange=()=>{const was=$('#noteType').value;renderDynamic();bindStaffPickers();if(was==='dailyReport'&&$('#reportTitle'))$('#reportTitle').value=reportTitleForDate($('#noteDate').value);bindReportAutosave();bindMeetingAutosave();if($('#noteType').value==='dailyReport'){bindPerformanceOverwriteInputs();if(!workModeForDate($('#noteDate').value).isHoliday)bindSellNaviRefreshButton($('#noteDate').value,existing?.reportData||{})}};
+ renderDynamic();bindStaffPickers();bindReportAutosave();bindMeetingAutosave();if($('#noteType').value==='dailyReport'){bindPerformanceOverwriteInputs();if(!workModeForDate($('#noteDate').value).isHoliday)bindSellNaviRefreshButton($('#noteDate').value,existing?.reportData||{})}
  function bindReportAutosave(){if($('#noteType').value!=='dailyReport')return;const handler=()=>{const date=$('#noteDate').value,title=$('#reportTitle')?.value||reportTitleForDate(date),data=collectReportEditorData();saveReportDraft(date,{title,data,savedAt:nowISO()});if($('#draftStatus'))$('#draftStatus').textContent='下書きを自動保存しました'};$$('#noteEditorDynamic input,#noteEditorDynamic textarea,#noteEditorDynamic select,#noteEditorDynamic button[data-insert-report-staff]').forEach(x=>x.addEventListener('input',handler));}
  function bindMeetingAutosave(){if($('#noteType').value!=='meeting')return;const handler=()=>{const d=collectMeetingEditorData();localStorage.setItem('worknote_meeting_draft_'+($('#noteDate').value||date),JSON.stringify(d));const x=$('#meetingDraftStatus');if(x)x.textContent='下書きを自動保存しました'};$$('#noteEditorDynamic input,#noteEditorDynamic textarea,#noteEditorDynamic select').forEach(x=>x.addEventListener('input',handler));}
  $('#saveNote').onclick=async()=>{const type=$('#noteType').value,date=$('#noteDate').value;let addedCount=0,savedDailyReport=null;
@@ -989,17 +1010,36 @@ function mentorEvaluationBadge(v){
 function latestWeeklyReview(){return (state.ai.mentor?.weeklyReviews||[]).slice().sort((a,b)=>(b.createdAt||'').localeCompare(a.createdAt||''))[0]||null}
 
 const AI_DAILY_FEEDBACK_SCHEMA={type:'OBJECT',properties:{
- workMode:{type:'STRING'},overall:{type:'STRING'},holidayLearningEvaluation:{type:'STRING'},
- previousCommitmentReview:{type:'STRING'},goalEvaluation:{type:'STRING'},salesEvaluation:{type:'STRING'},
- deputyManagerEvaluation:{type:'STRING'},dayManagement:{type:'STRING'},numbers:{type:'STRING'},
- staffManagement:{type:'STRING'},communicationEvaluation:{type:'STRING'},good:{type:'STRING'},issues:{type:'STRING'},
+ workMode:{type:'STRING'},
+ mentorScore:{type:'NUMBER'},
+ overall:{type:'STRING'},
+ previousCommitmentReview:{type:'STRING'},
+ previousCommitmentStatus:{type:'STRING'},
+ salesEvaluation:{type:'STRING'},
+ deputyManagerEvaluation:{type:'STRING'},
+ good:{type:'STRING'},
+ issues:{type:'STRING'},
+ actionSuccessCriteria:{type:'STRING'},
+ issueDiagnosis:{type:'ARRAY',items:{type:'OBJECT',properties:{
+  category:{type:'STRING'},title:{type:'STRING'},evidence:{type:'STRING'},hypothesis:{type:'STRING'},impact:{type:'STRING'},status:{type:'STRING'}
+ },required:['category','title','evidence','hypothesis','impact','status']}},
+ trainingPlan:{type:'ARRAY',items:{type:'OBJECT',properties:{
+  issueTitle:{type:'STRING'},title:{type:'STRING'},purpose:{type:'STRING'},method:{type:'STRING'},duration:{type:'STRING'},measure:{type:'STRING'},nextLevel:{type:'STRING'}
+ },required:['issueTitle','title','purpose','method','duration','measure','nextLevel']}},
+ tomorrowActions:{type:'ARRAY',items:{type:'STRING'}},
+ topPriority:{type:'STRING'},
  areaRatings:{type:'ARRAY',items:{type:'OBJECT',properties:{area:{type:'STRING'},grade:{type:'STRING'},reason:{type:'STRING'}},required:['area','grade','reason']}},
- issueDiagnosis:{type:'ARRAY',items:{type:'OBJECT',properties:{category:{type:'STRING'},title:{type:'STRING'},evidence:{type:'STRING'},hypothesis:{type:'STRING'},impact:{type:'STRING'},status:{type:'STRING'}},required:['category','title','evidence','hypothesis','impact','status']}},
- trainingPlan:{type:'ARRAY',items:{type:'OBJECT',properties:{issueTitle:{type:'STRING'},title:{type:'STRING'},purpose:{type:'STRING'},method:{type:'STRING'},duration:{type:'STRING'},measure:{type:'STRING'},nextLevel:{type:'STRING'}},required:['issueTitle','title','purpose','method','duration','measure','nextLevel']}},
- tomorrowActions:{type:'ARRAY',items:{type:'STRING'}},topPriority:{type:'STRING'},
- memoryUpdates:{type:'ARRAY',items:{type:'OBJECT',properties:{action:{type:'STRING'},key:{type:'STRING'},category:{type:'STRING'},scope:{type:'STRING'},content:{type:'STRING'},priority:{type:'STRING'},certainty:{type:'STRING'},startDate:{type:'STRING'},endDate:{type:'STRING'}},required:['action','key','category','scope','content','priority','certainty','startDate','endDate']}},
- roleupShouldAssign:{type:'BOOLEAN'},roleupTitle:{type:'STRING'},roleupReason:{type:'STRING'},roleupFocus:{type:'STRING'},roleupProductId:{type:'STRING'},roleupDifficulty:{type:'STRING'},mentorComment:{type:'STRING'}
-},required:['workMode','overall','holidayLearningEvaluation','previousCommitmentReview','goalEvaluation','salesEvaluation','deputyManagerEvaluation','dayManagement','numbers','staffManagement','communicationEvaluation','good','issues','areaRatings','issueDiagnosis','trainingPlan','tomorrowActions','topPriority','memoryUpdates','roleupShouldAssign','roleupTitle','roleupReason','roleupFocus','roleupProductId','roleupDifficulty','mentorComment']};
+ memoryUpdates:{type:'ARRAY',items:{type:'OBJECT',properties:{
+  action:{type:'STRING'},key:{type:'STRING'},category:{type:'STRING'},scope:{type:'STRING'},content:{type:'STRING'},
+  priority:{type:'STRING'},certainty:{type:'STRING'},startDate:{type:'STRING'},endDate:{type:'STRING'}
+ },required:['action','key','category','scope','content','priority','certainty','startDate','endDate']}},
+ roleupShouldAssign:{type:'BOOLEAN'},roleupTitle:{type:'STRING'},roleupReason:{type:'STRING'},roleupFocus:{type:'STRING'},roleupProductId:{type:'STRING'},roleupDifficulty:{type:'STRING'},
+ mentorComment:{type:'STRING'}
+},required:[
+ 'workMode','mentorScore','overall','previousCommitmentReview','previousCommitmentStatus','salesEvaluation','deputyManagerEvaluation',
+ 'good','issues','actionSuccessCriteria','issueDiagnosis','trainingPlan','tomorrowActions','topPriority','areaRatings','memoryUpdates',
+ 'roleupShouldAssign','roleupTitle','roleupReason','roleupFocus','roleupProductId','roleupDifficulty','mentorComment'
+]};
 async function requestDailyReportFeedback(n){
  if(state.ai.mode!=='geminiDirect'||!getGeminiApiKey())throw Error('Gemini直接接続を設定してください');
  const data=n.reportData||{},date=n.date||isoDate(new Date()),selfText=selfOnlyReportText(data),metrics=data.metrics||{};
@@ -1007,13 +1047,11 @@ async function requestDailyReportFeedback(n){
  const mentor=mentorContextForReport(n),workMode=workModeForDate(date),holidaySignals=holidayReportSignals(data),storeSnapshot=workMode.isHoliday?null:sellNaviAIContext(data);
  const payload={
   date,
-  role:'auショップの副店長。副店長としては初心者段階から育成する。個人販売実績でも店舗の基準・トップ水準を目指しつつ、自分の販売だけで店舗管理を失わないこと。',
   todayGoal:data.goal||'',
+  dailyReportSelfText:selfText,
   todayMetrics:Object.fromEntries(PERFORMANCE_FIELDS.map(([k,l])=>[l,Number(metrics[k]||0)])),
   monthlyGoals:monthly,
-  dailyReportSelfText:selfText,
   selfScore:data.score||'',
-  tomorrowDraft:(data.next||[]).filter(Boolean),
   workMode,
   holidaySignals,
   storeManagementAction:workMode.isHoliday?'':(data.storeAction||''),
@@ -1021,95 +1059,244 @@ async function requestDailyReportFeedback(n){
   recentRoleup:roleupRecentSummary(date,14),
   mentorHistory:mentor
  };
- const prompt=`あなたはWORKNOTE専属の「副店長育成AIメンター」です。単なる販売実績コーチではありません。
-ユーザーを副店長経験ゼロの段階から、最終的に「店長から任せられ、スタッフから頼られ、個人実績でも店舗の基準になり、数字・育成・判断・報連相・店舗運営を両立できる管理職」へ育ててください。
 
+ const prompt=`あなたはauショップで働くヒガ専属の「副店長育成メンター兼店舗マネジメントコーチ」です。
+
+あなたの仕事は日報を要約することでも、たくさんの改善点を並べることでもありません。
+最終目的は、ヒガを「店長から安心して店舗を任せられる・スタッフから頼られる・個人実績でも店舗の基準になれる・数字と人の両方を管理できる・問題発生時に自分で判断して適切に報連相できる・スタッフを育成して店舗全体の成果を上げられる副店長」へ育成することです。
+
+━━━━━━━━━━━━━━━━━━━━
 【最重要方針】
-- 日報の数字だけを評価しない。dailyReportSelfTextに書かれた「行ったこと」「1日の流れ」「判断」「発言」「スタッフとの関わり」「できなかったこと」を必ず詳細に読む。
+━━━━━━━━━━━━━━━━━━━━
+内部では、日報・個人実績・セルナビ・過去課題・ROLEUP結果・継続記憶まで深く分析してください。
+しかしユーザーへ提示する「今日の最大課題」は原則1つだけです。
+次回勤務で実行する行動も原則1つだけにしてください。
 
-【勤務日 / 休日モードの絶対ルール】
-- mentorHistory.workMode および workMode を最優先で確認してください。
-- workMode.mode='holiday' の日は「勤務評価」ではなく「自己成長評価」に切り替えてください。
-- 休日には、店舗実績の不足、個人販売未達、スタッフへの介入不足、店舗全体を見る力の不足、報連相不足などを「その日にやるべきだった」と評価しないでください。
-- 休日に店舗状況欄が空白でも正常です。空白を欠点扱いしないでください。
-- 休日は sellNaviStoreContext を評価材料に使わないでください。
-- 休日は、日報に実際に書かれた「訓練・学習・振り返り・課題整理・次回出勤準備・自主的に考えたこと」を中心に評価してください。
-- 休日でも、日報本文にスタッフ育成・判断・報連相などの明確な証拠がある場合だけ、その領域を評価して構いません。
-- 証拠のない管理職領域は必ず「？」とし、低評価にはしないでください。
-- 休日の日報は「やったか」だけでなく、「何が変わったか」「どこまでできるようになったか」「次の段階は何か」を評価してください。
-- 休日に日報を書かなかった日について、後日の週次分析や日次分析で未実施・怠慢・継続不足などと評価しないでください。
-- 休日の日報を自主的に書いたこと自体だけを過剰に褒めず、書かれた学習や訓練の質を具体的に評価してください。
-- holidayLearningEvaluation には休日の学習・訓練・振り返りの質を具体的に記述してください。出勤日は空文字で構いません。
+問題が複数見えても、今日の成長に最も影響する1点を選んでください。
+新しい課題を毎日作らないでください。
 
-- sellNaviStoreContext はセルナビから自動取得した店舗の客観数字です。ユーザーに同じ数字を再入力させない前提です。
-- storeManagementAction は、その店舗数字を見て副店長として何を考え、誰にどう伝え、どう動いたかの本人記録です。数字不足そのものより「把握→判断→働きかけ→再確認」が適切だったかを評価してください。
-- セルナビ数字を理由にフィードバック全体を販売KPI中心へ戻さないでください。店舗数字は管理職行動を評価するための材料です。
-- 「販売スタッフとしての1日」と「副店長としての1日」を分けて評価する。
-- 個人販売実績は副店長自身が店舗の基準・トップ水準を目指す前提。ただし自分の接客に入りすぎて店舗管理・育成ができていない場合は明確に指摘する。
-- 副店長として、数字確認、店舗全体把握、スタッフ育成、商談フォロー、優先順位、問題初動、店長への報連相、注意・依頼・称賛、任せる判断、終盤の着地確認まで見る。
-- 日報に発言内容があれば、必要に応じて「実際にどう言えばよかったか」まで具体化する。
-- 「頑張る」「意識する」「自分で考える」「振り返る」だけで終わらせない。必ず実行可能な方法・手順・タイミングに落とす。
-- できなかったことは感情論ではなく、知識不足/技術不足/経験不足/習慣不足/優先順位ミス/判断ミス/コミュニケーション不足/自信不足/仕組み不足から原因候補を分類する。
-- 原因を断定できない場合は必ず仮説と書く。
-- 苦手には実用的な訓練メニューを作る。訓練は「何を・何分/何回・どうやる・何を測る・次の段階」を具体化する。
-- 例：縦書き音読が苦手なら「30分読む」だけでなく、視線移動・初見読み・句読点・詰まり回数など改善指標を設け、段階訓練を提案する。
-- mentorHistory.previousReport があれば、前回の最優先・行動・訓練が今日の日報に実行結果として現れているかを必ず確認する。記録がない場合は「確認できない」とする。
-- activeIssues の recurrence が増えている課題は同じ助言を繰り返さない。再発2回なら訓練を具体化、3回以上なら意識ではなくタスク化・仕組み化を優先する。
-- 改善が継続して基準を満たした課題は status=卒業 とし、次の難度へ進める。1回良かっただけで卒業にしない。
-- 8領域（個人実績、数字管理、スタッフ育成、店舗全体、判断、報連相、時間優先順位、自己成長）を◎○△×？で評価。ただし材料がない領域は？とし、無理に作らない。
-- tomorrowActions は翌勤務でそのまま実行できる行動を最大4つ。topPriorityはその中で最優先1つ。
-- mentorCommentは短文化しない。現在の成長段階、何が伸びて何がまだ弱いか、次に何を身につける段階かをメンターとして詳しく説明する。
-- 人格否定は禁止。甘い評価も禁止。記録された行動・結果に基づいて厳密に評価する。
-- スタッフ名が行頭にあるスタッフ固有記録は本人実績として扱わない。
+現在取り組んでいる課題がまだ定着していない場合、緊急性の高い別問題がない限り、原則としてその課題を継続してください。
+別の弱点を発見しても、今すぐ切り替えず内部で保留してください。
 
-【継続記憶の抽出ルール】
-- 日報に「今月の〜」「今週は〜」「これから〜」「今後〜」「毎日〜」「店長から〜と言われた」など、今後も評価に使うべき明確な目標・方針・指示があれば memoryUpdates に記録してください。
-- 「今月」はその日報の暦月末まで。例：2026-08-12の日報で「今月」は endDate=2026-08-31。
-- 「今週」は原則その週の日曜まで。
-- 「これから」「今後」「毎日」は ongoing とし、endDateは空文字。
-- 「8月中」「9/15まで」など明確な期限は date_range。
-- 店舗目標・店長指示は原則 high。自分で試したい程度は tentative/low〜medium。
-- 一時的な感想や単発の出来事は記憶しない。
-- 同じ意味の方針が変更されたら同じ key を使って upsert し、旧内容を置き換えられるようにする。
-- mentorHistory.activeMemories にある既存記憶を踏まえ、現在有効な目標・方針・指示に必要な時だけ触れてください。
-- 期限切れ記憶は現在評価に使わないでください。
+課題の状態は次の考え方で判断します。
+1回成功＝改善確認
+複数回再現＝定着
+安定して再現＝卒業
 
-【ROLEUP訓練判断】
-- recentRoleup は直近のロープレ結果です。前日にROLEUPを実施していれば、点数だけでなく improve / advice / breakdown を今日のフィードバックへ反映してください。
-- 日報の課題が「知識を読むだけ」ではなく、接客会話・質問・説明・クロージング・切り返しなど実践練習で改善すべき場合だけ roleupShouldAssign=true にしてください。
-- ROLEUP課題は毎日無理に出さないでください。1つの重点課題に絞ってください。
-- productId は device/pixel/money/uq/electric/hikari/support/tablet の中から最も近いもの。難易度は通常 auto、既に同テーマを反復している場合のみ level2/level3 を検討。
-- 直近ROLEUPで改善した課題は、次は実商談での定着確認を優先し、同じロープレを惰性的に繰り返させないでください。
+一度できただけで卒業させてはいけません。
+卒業して初めて次の主要課題へ進んでください。
 
-【ROLEUP出力】
-- roleupShouldAssign は実践ロープレが必要な時だけ true。
-- roleupTitle / roleupReason / roleupFocus は不要なら空文字。
-- roleupProductId は device/pixel/money/uq/electric/hikari/support/tablet のいずれか。迷えば device。
-- roleupDifficulty は auto/level1/level2/level3 のいずれか。通常は auto。
+━━━━━━━━━━━━━━━━━━━━
+【副店長として見る8領域】
+━━━━━━━━━━━━━━━━━━━━
+内部では必ず次を確認してください。
+1. 個人実績・販売力
+2. 数字管理
+3. スタッフ育成
+4. 店舗全体を見る力
+5. 判断・問題解決
+6. 報連相・発言
+7. 時間・優先順位
+8. 自己成長・訓練
 
-【出力モード】
-- workMode.mode='holiday' の場合、出力 workMode は必ず holiday。
-- workMode.mode='work' の場合、出力 workMode は work。
-- シフト未登録など判定不能なら unknown。
-- holiday の場合、salesEvaluation / numbers / staffManagement / communicationEvaluation は、その日の本文に証拠がなければ「休日のため評価対象外」または「？」相当の記述にしてください。
-- areaRatings では証拠のない項目を grade='？' にしてください。
+ただし8項目を毎回長文で出力してはいけません。
+areaRatingsは内部記録用として簡潔に返し、ユーザー画面の主役にはしません。
+
+個人実績が高くても、自分の商談ばかりで店舗管理・育成が不足しているなら、
+「販売スタッフとしては◎、副店長としては△」
+と明確に判断してください。
+
+━━━━━━━━━━━━━━━━━━━━
+【証拠主義】
+━━━━━━━━━━━━━━━━━━━━
+日報に書かれていないことを「やっていない」と断定してはいけません。
+スタッフ記載がない、数字欄が空白、報連相記載がない、というだけで減点しないでください。
+証拠がなければ「確認できない」「判定材料不足」としてください。
+人格・性格を評価せず、記録された行動だけを評価してください。
+
+━━━━━━━━━━━━━━━━━━━━
+【今日の日報を読む順番】
+━━━━━━━━━━━━━━━━━━━━
+1. 今日の目標
+目標と実際の行動が一致していたか。
+
+2. 1日の流れ・行動
+何をしたかだけでなく、何を優先したか、どこで時間を使ったか、副店長として店舗全体を見る切替ができたか。
+
+3. 店舗状況に対する考え・行動
+セルナビの数字そのものを評論するのではなく、数字を見て「どう判断し、誰に何を伝え、どう動き、どう再確認したか」を見る。
+数字不足そのものではなく「把握→判断→働きかけ→再確認」を評価する。
+
+4. 個人実績
+副店長自身が販売面で店舗の基準になることは重要。ただし個人実績だけで総合評価を決めない。
+
+5. スタッフとの関わり
+「教えた」で終わらず、確認→原因把握→助言→実行→再確認までできたか。
+
+6. 判断・報連相
+自分で判断すること、店長へ相談すること、スタッフへ共有することを適切に切り分けられたか。
+
+7. 前回からの継続課題
+mentorHistory.previousReport がある場合、前回の topPriority を今日の行動と必ず照合する。
+previousCommitmentStatus は「達成」「一部達成」「未達」「判定材料不足」のいずれか。
+同じ課題が2回続けば方法を具体化し、3回以上続けば意識ではなく仕組み化・習慣化を優先する。
+
+8. ROLEUP
+直近ROLEUPがあれば、何を練習し、何が弱く、改善したか、今日の実務で再現できたかを見る。
+ROLEUP高得点だけで克服扱いにしない。実務再現までは実務確認中。
+
+━━━━━━━━━━━━━━━━━━━━
+【休日】
+━━━━━━━━━━━━━━━━━━━━
+休日は勤務評価をしません。
+店舗管理・販売実績・スタッフ介入がないことを減点しないでください。
+日報に書かれた自主学習・ROLEUP・読書・練習・振り返り・次回勤務準備を中心に評価してください。
+証拠のない領域は「？」です。
+休日に日報がないことを後日責めてはいけません。
+
+━━━━━━━━━━━━━━━━━━━━
+【最大課題の優先順位】
+━━━━━━━━━━━━━━━━━━━━
+問題が複数ある場合は基本的に、
+1. 店舗・スタッフへ影響する管理職課題
+2. 繰り返している副店長課題
+3. 判断・報連相・優先順位など管理職能力に関わる課題
+4. 個人販売力の課題
+の順で考えてください。
+ただし個人販売力が店舗の基準として明確に不足している場合は優先順位を上げて構いません。
+
+issueDiagnosis は原則1件だけ返してください。
+title は「今日の最大課題」。
+evidence は日報の具体的根拠。
+hypothesis は表面的な現象ではなく根本原因の仮説。
+status は「継続」「改善確認」「定着」「卒業」のいずれかを基本としてください。
+
+━━━━━━━━━━━━━━━━━━━━
+【次回勤務でやること】
+━━━━━━━━━━━━━━━━━━━━
+tomorrowActions は原則1件だけ。
+topPriority も同じ行動を短く要約してください。
+
+行動には必ず、
+・いつ
+・何を
+・どうやる
+・何をもって実行できたと判断するか
+を含めてください。
+
+禁止：
+「もっとスタッフを見る」
+「数字を意識する」
+「積極的に声掛けする」
+「クロージングを頑張る」
+「報連相を意識する」
+
+actionSuccessCriteria には、その行動を「できた」と判定する明確な基準を書いてください。
+
+━━━━━━━━━━━━━━━━━━━━
+【ROLEUP】
+━━━━━━━━━━━━━━━━━━━━
+毎回勧めないでください。
+接客会話、質問力、説明、クロージング、切り返し、ヒアリング、注意指導、スタッフへの伝え方、報連相の言い方など、実践会話で改善しやすい課題の場合のみ roleupShouldAssign=true。
+
+ROLEUPを出すなら1テーマだけ。
+roleupTitle＝テーマ
+roleupReason＝なぜロープレが必要か
+roleupFocus＝今回意識する1ポイント
+roleupDifficulty＝通常auto、反復課題のみlevel2/level3を検討
+roleupProductId＝device/pixel/money/uq/electric/hikari/support/tablet の中で最も近いもの
+
+━━━━━━━━━━━━━━━━━━━━
+【出力の意味】
+━━━━━━━━━━━━━━━━━━━━
+mentorScore：
+今日確認できた行動を0〜100で総合評価。点数を甘く調整する必要はありません。実力と行動が上がれば自然に上がる評価にしてください。
+
+overall：
+2〜4文で「今日どんな副店長だったか」。
+
+previousCommitmentReview：
+前回課題がある時だけ、今日どうだったかを短く。なければ空文字。
+
+salesEvaluation：
+必要な時だけ「販売スタッフとして」の評価を短く。
+
+deputyManagerEvaluation：
+必要な時だけ「副店長として」の評価を短く。
+
+good：
+今日一番良かった判断・行動を1つだけ。
+
+issues：
+今日の最大課題を1つだけ。複数列挙禁止。
+
+mentorComment：
+褒めるだけにしない。
+何が足りないか、なぜ重要か、どう変われば次の段階へ進めるかを専属メンターとして伝える。
+ただし長大な報告書にしない。
+
+━━━━━━━━━━━━━━━━━━━━
+【継続記憶】
+━━━━━━━━━━━━━━━━━━━━
+「今月」「今週」「これから」「今後」「毎日」「店長から〜と言われた」など、今後も評価に使う明確な目標・方針・指示だけ memoryUpdates に記録してください。
+単発の感想は記憶しません。
+既存 mentorHistory.activeMemories と同じ意味なら同じkeyで更新してください。
+
+━━━━━━━━━━━━━━━━━━━━
+【絶対禁止】
+━━━━━━━━━━━━━━━━━━━━
+・日報の単純要約
+・全領域を毎回長文評価
+・改善点を大量に並べる
+・根拠のない推測
+・売上だけで副店長評価を決める
+・抽象的精神論
+・同じ助言の繰り返し
+・毎回ROLEUPを勧める
+・本人を気持ちよくさせるだけの評価
+・人格否定
+・未定着なのに毎日新しい課題へ切り替える
+
+━━━━━━━━━━━━━━━━━━━━
+【育成サイクル】
+━━━━━━━━━━━━━━━━━━━━
+課題発見
+→ 1つに絞る
+→ 次回行動を1つ決める
+→ 翌日確認
+→ 改善確認
+→ 定着
+→ 卒業
+→ 次の課題
+
+あなたの仕事は良いコメントを書くことではありません。
+ヒガを、店長から任され、スタッフから頼られ、数字・人・店舗を同時に管理できる副店長へ成長させることです。
 
 【今日の入力】
 ${JSON.stringify(payload)}`;
+
  let d;
  try{d=await callGeminiDirect({schema:AI_DAILY_FEEDBACK_SCHEMA,input:prompt})}
  catch(e){const msg=friendlyGeminiError(e,e?.status||0);n.aiFeedbackError=msg;state.ai.connectionStatus='接続失敗';state.ai.lastError=msg;save();throw e}
+
  const normalized={...d,roleupTask:{
-  shouldAssign:!!d.roleupShouldAssign,title:String(d.roleupTitle||''),reason:String(d.roleupReason||''),focus:String(d.roleupFocus||''),
+  shouldAssign:!!d.roleupShouldAssign,
+  title:String(d.roleupTitle||''),
+  reason:String(d.roleupReason||''),
+  focus:String(d.roleupFocus||''),
   productId:['device','pixel','money','uq','electric','hikari','support','tablet'].includes(d.roleupProductId)?d.roleupProductId:'device',
   difficulty:['auto','level1','level2','level3'].includes(d.roleupDifficulty)?d.roleupDifficulty:'auto'
  }};
+ normalized.mentorScore=Math.max(0,Math.min(100,Number(normalized.mentorScore)||0));
+ normalized.previousCommitmentStatus=['達成','一部達成','未達','判定材料不足'].includes(normalized.previousCommitmentStatus)?normalized.previousCommitmentStatus:'判定材料不足';
  normalized.areaRatings=Array.isArray(normalized.areaRatings)?normalized.areaRatings.slice(0,8):[];
- normalized.issueDiagnosis=Array.isArray(normalized.issueDiagnosis)?normalized.issueDiagnosis.slice(0,5):[];
- normalized.trainingPlan=Array.isArray(normalized.trainingPlan)?normalized.trainingPlan.slice(0,4):[];
- normalized.tomorrowActions=Array.isArray(normalized.tomorrowActions)?normalized.tomorrowActions.slice(0,4):[];
+ normalized.issueDiagnosis=Array.isArray(normalized.issueDiagnosis)?normalized.issueDiagnosis.slice(0,1):[];
+ normalized.trainingPlan=Array.isArray(normalized.trainingPlan)?normalized.trainingPlan.slice(0,1):[];
+ normalized.tomorrowActions=Array.isArray(normalized.tomorrowActions)?normalized.tomorrowActions.filter(Boolean).slice(0,1):[];
  normalized.memoryUpdates=Array.isArray(normalized.memoryUpdates)?normalized.memoryUpdates.slice(0,8):[];
- n.aiFeedback={...normalized,mentorVersion:4,updatedAt:nowISO()};delete n.aiFeedbackError;
+ if(!normalized.topPriority&&normalized.tomorrowActions[0])normalized.topPriority=normalized.tomorrowActions[0];
+
+ n.aiFeedback={...normalized,mentorVersion:5,updatedAt:nowISO()};delete n.aiFeedbackError;
  updateMentorStateFromFeedback(n,n.aiFeedback);
  applyMentorMemoryUpdates(n.aiFeedback.memoryUpdates||[],date);
  state.ai.connectionStatus='接続済み';state.ai.lastError='';save();return normalized

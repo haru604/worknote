@@ -375,3 +375,28 @@
 .roleup-command-card h2{margin:6px 0 0}.roleup-training-status h3{margin:12px 0 6px;color:#17263a}.roleup-training-status p{color:#5f7185;line-height:1.6}.roleup-focus,.roleup-result-mini{margin:10px 0;padding:11px;border-radius:12px;background:#eef3fb;color:#17263a}.roleup-focus b{display:block;margin-bottom:5px}.roleup-result-mini strong{font-size:24px;margin-right:8px}.roleup-recent{margin-top:12px;border-top:1px solid #e1e7ef;padding-top:10px}.roleup-recent>span{font-size:11px;color:#718096;font-weight:800}.roleup-recent>div{display:flex;justify-content:space-between;padding:7px 0;font-size:12px}.roleup-recommend button{width:100%;margin-top:10px}.monthly-mentor-report{max-width:760px;margin:auto;color:#17263a}.monthly-mentor-report header,.monthly-mentor-report section{background:#fff;border:1px solid #e1e7ef;border-radius:15px;padding:15px;margin:10px 0}.monthly-mentor-report h1{margin:8px 0}.monthly-mentor-report h3{margin:0 0 8px}.monthly-rating,.monthly-next{padding:10px 0;border-bottom:1px solid #edf1f5}.monthly-rating:last-child,.monthly-next:last-child{border-bottom:0}.monthly-rating b{display:flex;justify-content:space-between}.monthly-rating p,.monthly-next p{margin:5px 0;color:#506274}.monthly-rating small,.monthly-next small{color:#718096}
 
 .sellnavi-source-note{margin:10px 0 2px;padding:8px 10px;border-radius:10px;background:#eef7ff;color:#27689e;font-size:11px;font-weight:750}.sellnavi-sync-list-all{max-height:58dvh;overflow:auto;padding-right:2px}.sellnavi-sync-list-all>div{grid-template-columns:minmax(0,1fr) minmax(120px,auto)}.sellnavi-sync-list-all strong{text-align:right;font-variant-numeric:tabular-nums}.sellnavi-sync-list-all small{display:block}
+
+
+/* v31.6 focused deputy-manager mentor */
+.mentor-focused-feedback{display:grid;gap:10px}
+.mentor-focused-feedback .focused{margin:0}
+.mentor-score-card{
+ background:linear-gradient(145deg,#0b2541,#16466f);
+ color:#fff;border-radius:18px;padding:18px;
+ box-shadow:0 8px 24px rgba(8,25,45,.16)
+}
+.mentor-score-card>span{font-size:11px;color:#b9d8f2;font-weight:800}
+.mentor-score-card>strong{display:block;font-size:42px;line-height:1;margin:9px 0 12px}
+.mentor-score-card>strong small{font-size:15px;color:#b9d8f2}
+.mentor-score-card p{margin:0;line-height:1.7;color:#eef7ff}
+.mentor-role-split{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.mentor-role-split>div{background:#f4f8fc;border-radius:14px;padding:12px}
+.mentor-role-split span{display:block;font-size:10px;font-weight:900;color:#5f7388;margin-bottom:6px}
+.mentor-role-split p{margin:0;font-size:13px;line-height:1.6}
+.mentor-prev-status{display:inline-block;margin:3px 0 7px;padding:4px 8px;border-radius:999px;background:#eef4f9;color:#31506d;font-size:11px;font-weight:900}
+.mentor-main-issue{border-left:5px solid var(--red)}
+.mentor-main-issue h4{margin:5px 0 9px;font-size:17px;line-height:1.55}
+.mentor-next-one{border-left:5px solid var(--blue);background:#f2f8ff}
+.mentor-next-one>strong{display:block;font-size:16px;line-height:1.65;margin:6px 0}
+.mentor-best{border-left:5px solid var(--green)}
+@media(max-width:520px){.mentor-role-split{grid-template-columns:1fr}}
